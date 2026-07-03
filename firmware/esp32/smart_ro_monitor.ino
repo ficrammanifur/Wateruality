@@ -3,13 +3,13 @@
  *   SMART WATER QUALITY MONITORING SYSTEM
  *   For Reverse Osmosis Depot
  *   ESP32 - WITHOUT PUMP CONTROL
- *   With Improved TDS Calibration
+ *   LCD: Minimalist Display
  * ============================================================
  * 
  *   Sensors:
  *   - pH Sensor (GPIO32)
- *   - TDS Sensor (GPIO33) - Calibrated with dataset
- *   - Turbidity Sensor (GPIO35)
+ *   - TDS Sensor (GPIO33)
+ *   - Turbidity Sensor (GPIO35) - NTU output
  *   - DS18B20 Temperature (GPIO25)
  *   - Flow Sensor (GPIO18 - Interrupt)
  * 
@@ -73,6 +73,7 @@ float phFiltered = 7.0;
 float tdsValue = 0.0;
 float temperatureC = 25.0;
 int turbidityADC = 0;
+float turbidityNTU = 0.0;
 float turbidityPercent = 0.0;
 String turbStatus = "JERNIH";
 String waterStatus = "MENUNGGU";
@@ -107,6 +108,8 @@ const float V7 = 0.874;  const float PH7 = 6.86;
 const float V9 = 0.485;  const float PH9 = 9.18;
 
 // ==================== TURBIDITY CALIBRATION ====================
+int TURB_AIR_ADC = 3800;
+int TURB_KERUH_ADC = 1800;
 int TURB_AIR = 4095;
 int TURB_WATER = 3031;
 
@@ -125,6 +128,26 @@ int daysLeft = 999;
 float dailyVolume[7] = {0};
 int dailyIndex = 0;
 unsigned long lastDayUpdate = 0;
+
+// ==================== TDS CALIBRATION DATA ====================
+struct TDSCalibrationPoint {
+    float voltage;
+    float ppm;
+};
+
+const TDSCalibrationPoint calData[] = {
+    {0.5566, 1},    // Amidis (RO water)
+    {0.6035, 129},  // Aqua
+    {0.6657, 148},  // Le Minerale
+    {0.6283, 170},  // Vit
+    {0.5941, 181},  // Ades
+    {0.7010, 233},  // Keran Mentah
+    {0.6420, 216},  // Sumur Mentah
+    {0.7707, 356},  // Selokan
+    {1.3492, 492},  // Kolam Renang
+};
+
+const int calDataCount = sizeof(calData) / sizeof(calData[0]);
 
 // ==================== FUNCTION PROTOTYPES ====================
 void initWiFi();
@@ -147,33 +170,13 @@ void startFlowCalibration(float targetLiter);
 void finishFlowCalibration();
 float calculatePH(float voltage);
 float calculateTDS_Improved(float voltage, float temp);
+float adcToNTU(int adc);
 void updateFilterHealth();
 void updateDailyVolume();
 void printStatus();
 void beep(int times);
-
-// ============================================================
-//   TDS CALIBRATION DATA - From Dataset Analysis
-// ============================================================
-struct TDSCalibrationPoint {
-    float voltage;
-    float ppm;
-};
-
-// Data kalibrasi dari dataset yang diberikan
-const TDSCalibrationPoint calData[] = {
-    {0.5566, 1},    // Amidis (RO water)
-    {0.6035, 129},  // Aqua
-    {0.6657, 148},  // Le Minerale
-    {0.6283, 170},  // Vit
-    {0.5941, 181},  // Ades
-    {0.7010, 233},  // Keran Mentah
-    {0.6420, 216},  // Sumur Mentah
-    {0.7707, 356},  // Selokan
-    {1.3492, 492},  // Kolam Renang
-};
-
-const int calDataCount = sizeof(calData) / sizeof(calData[0]);
+void debugTurbidity();
+void calibrateTurbidity();
 
 // ============================================================
 //   SETUP
@@ -185,23 +188,19 @@ void setup() {
   Serial.println("\n========================================");
   Serial.println("  SMART RO WATER QUALITY MONITOR");
   Serial.println("  System Initializing...");
-  Serial.println("  TDS Calibration: Improved Version");
+  Serial.println("  LCD: Minimalist Mode");
   Serial.println("========================================\n");
   
-  // ===== ADC Resolution =====
   analogReadResolution(12);
   
-  // ===== Init Buzzer =====
   pinMode(BUZZER_PIN, OUTPUT);
   beep(2);
   
-  // ===== Init Outputs =====
   pinMode(LED_HIJAU_PIN, OUTPUT);
   pinMode(LED_MERAH_PIN, OUTPUT);
   digitalWrite(LED_HIJAU_PIN, LOW);
   digitalWrite(LED_MERAH_PIN, LOW);
   
-  // ===== Init LCD =====
   Wire.begin(LCD_SDA, LCD_SCL);
   lcd.init();
   lcd.backlight();
@@ -216,11 +215,9 @@ void setup() {
   lcd.print("  Please Wait");
   delay(2000);
   
-  // ===== Init Sensors =====
   ds18b20.begin();
   initFlowSensor();
   
-  // Init buffers
   for (int i = 0; i < AVG_SAMPLES; i++) {
     phADCBuf[i] = 2048;
     tdsBuf[i] = 0.5;
@@ -228,21 +225,19 @@ void setup() {
   }
   Serial.println("[OK] Sensors initialized");
   
-  // Print TDS calibration info
   Serial.println("\n[TDS CALIBRATION] Using improved segmented linear calibration");
   Serial.printf("[TDS CALIBRATION] Based on %d data points from dataset\n", calDataCount);
-  Serial.println("[TDS CALIBRATION] Range: 0-500 ppm (optimized for drinking water)\n");
   
-  // ===== Init WiFi =====
+  Serial.println("\n[TURBIDITY] Using NTU (Nephelometric Turbidity Unit)");
+  Serial.println("[TURBIDITY] Standard: < 5 NTU for drinking water\n");
+  
   initWiFi();
   
-  // ===== Init MQTT =====
   if (wifiConnected) {
     initMQTT();
     mqttReconnect();
   }
   
-  // ===== Load filter data =====
   prefs.begin("filter", true);
   displayVolumeL = prefs.getFloat("volume", 0.0);
   prefs.end();
@@ -250,12 +245,14 @@ void setup() {
   Serial.println("[OK] System ready!");
   Serial.println("========================================\n");
   Serial.println("Commands:");
-  Serial.println("  status  - Show all sensor data");
-  Serial.println("  r       - Reset volume");
-  Serial.println("  c1/c2   - Flow calibration");
-  Serial.println("  k       - Finish flow calibration");
-  Serial.println("  reset   - Reset filter health");
-  Serial.println("  test    - Test buzzer");
+  Serial.println("  status   - Show all sensor data");
+  Serial.println("  r        - Reset volume");
+  Serial.println("  c1/c2    - Flow calibration");
+  Serial.println("  k        - Finish flow calibration");
+  Serial.println("  reset    - Reset filter health");
+  Serial.println("  test     - Test buzzer");
+  Serial.println("  turb     - Debug turbidity sensor");
+  Serial.println("  cal_turb - Calibrate turbidity sensor");
   Serial.println("========================================\n");
   
   lcd.clear();
@@ -268,12 +265,10 @@ void setup() {
 void loop() {
   unsigned long now = millis();
   
-  // ===== MQTT Loop =====
   if (mqttConnected) {
     mqttClient.loop();
   }
   
-  // ===== Read Sensors =====
   if (now - lastSensorRead >= SENSOR_INTERVAL) {
     lastSensorRead = now;
     readSensors();
@@ -282,16 +277,13 @@ void loop() {
     updateDailyVolume();
   }
   
-  // ===== Update LCD =====
   if (now - lastLCDUpdate >= LCD_INTERVAL) {
     lastLCDUpdate = now;
     updateLCD();
   }
   
-  // ===== Update LEDs =====
   updateLEDs();
   
-  // ===== Publish MQTT =====
   if (wifiConnected && (now - lastMQTTPublish >= MQTT_INTERVAL)) {
     lastMQTTPublish = now;
     if (!mqttClient.connected()) {
@@ -301,7 +293,6 @@ void loop() {
     publishMQTT();
   }
   
-  // ===== Serial Commands =====
   if (Serial.available()) {
     String cmd = Serial.readStringUntil('\n');
     cmd.trim();
@@ -327,8 +318,11 @@ void loop() {
     } else if (cmd == "test") {
       beep(5);
       Serial.println("[CMD] Test buzzer OK");
+    } else if (cmd == "turb") {
+      debugTurbidity();
+    } else if (cmd == "cal_turb") {
+      calibrateTurbidity();
     } else if (cmd.startsWith("cal")) {
-      // TDS calibration: cal <known_ppm>
       int spaceIndex = cmd.indexOf(' ');
       if (spaceIndex > 0) {
         float knownPPM = cmd.substring(spaceIndex + 1).toFloat();
@@ -371,57 +365,47 @@ void readPH() {
   phValue = phFiltered;
 }
 
-// ==================== IMPROVED TDS CALCULATION ====================
 float calculateTDS_Improved(float voltage, float temp) {
-    // 1. Kompensasi suhu (standar 25°C)
     float tempComp = 1.0 + 0.02 * (temp - 25.0);
     float vComp = voltage / tempComp;
     
     float tds;
     
-    // 2. Segmented linear interpolation based on dataset
     if (vComp <= 0.56) {
-        // Ultra low range (RO water) - 0-10 ppm
         tds = (vComp - 0.5566) * 1000 + 1;
         if (tds < 0) tds = 0;
     }
     else if (vComp <= 0.60) {
-        // Low range - 10-150 ppm
         float v1 = 0.5566, ppm1 = 1;
         float v2 = 0.6035, ppm2 = 129;
         float slope = (ppm2 - ppm1) / (v2 - v1);
         tds = slope * (vComp - v1) + ppm1;
     }
     else if (vComp <= 0.68) {
-        // Medium range - 150-300 ppm
         float v1 = 0.6035, ppm1 = 129;
         float v2 = 0.7010, ppm2 = 233;
         float slope = (ppm2 - ppm1) / (v2 - v1);
         tds = slope * (vComp - v1) + ppm1;
     }
     else if (vComp <= 0.78) {
-        // High range - 300-500 ppm
         float v1 = 0.7010, ppm1 = 233;
         float v2 = 0.7707, ppm2 = 356;
         float slope = (ppm2 - ppm1) / (v2 - v1);
         tds = slope * (vComp - v1) + ppm1;
     }
     else {
-        // Very high range - >500 ppm
         float v1 = 0.7707, ppm1 = 356;
         float v2 = 1.3492, ppm2 = 492;
         float slope = (ppm2 - ppm1) / (v2 - v1);
         tds = slope * (vComp - v1) + ppm1;
     }
     
-    // 3. Clamp values
     if (tds < 0) tds = 0;
     if (tds > 5000) tds = 5000;
     
     return tds;
 }
 
-// ==================== TDS CALIBRATION FUNCTION ====================
 void calibrateTDS(float knownPPM) {
     Serial.println("\n=== TDS CALIBRATION ===");
     Serial.println("Place sensor in solution with known PPM");
@@ -429,7 +413,6 @@ void calibrateTDS(float knownPPM) {
     Serial.println("Reading in 5 seconds...");
     delay(5000);
     
-    // Read multiple samples
     float sumV = 0;
     int samples = 50;
     for (int i = 0; i < samples; i++) {
@@ -443,13 +426,10 @@ void calibrateTDS(float knownPPM) {
     Serial.printf("ADC Average: %.0f\n", (avgV / 3.3) * 4095.0);
     Serial.printf("Current TDS Reading: %.1f ppm\n", calculateTDS_Improved(avgV, temperatureC));
     
-    // Calculate correction factor
     float currentTDS = calculateTDS_Improved(avgV, temperatureC);
     if (currentTDS > 0) {
         float correctionFactor = knownPPM / currentTDS;
         Serial.printf("Correction Factor: %.3f\n", correctionFactor);
-        Serial.println("Apply this factor to your readings");
-        Serial.println("Or use the improved calibration data");
     }
     
     Serial.println("========================\n");
@@ -468,7 +448,6 @@ void readTDS() {
     }
     float avgV = sum / AVG_SAMPLES;
     
-    // Gunakan fungsi improved
     tdsValue = constrain(calculateTDS_Improved(avgV, temperatureC), 0, 9999);
 }
 
@@ -478,6 +457,22 @@ void readTemperature() {
   if (t > -50 && t < 125) {
     temperatureC = t;
   }
+}
+
+float adcToNTU(int adc) {
+  if (adc >= TURB_AIR_ADC) {
+    return 0.0;
+  }
+  if (adc <= TURB_KERUH_ADC) {
+    return 100.0;
+  }
+  
+  float ntu = 100.0 * (TURB_AIR_ADC - adc) / (TURB_AIR_ADC - TURB_KERUH_ADC);
+  
+  if (ntu < 0) ntu = 0;
+  if (ntu > 100) ntu = 100;
+  
+  return ntu;
 }
 
 void readTurbidity() {
@@ -490,20 +485,22 @@ void readTurbidity() {
   }
   turbidityADC = sum / AVG_SAMPLES;
   
-  if (turbidityADC >= TURB_AIR) {
-    turbidityPercent = 100.0;
-  } else if (turbidityADC <= TURB_WATER) {
-    turbidityPercent = 0.0;
-  } else {
-    turbidityPercent = (float)(turbidityADC - TURB_WATER) /
-                       (float)(TURB_AIR - TURB_WATER) * 100.0;
-  }
-  turbidityPercent = constrain(turbidityPercent, 0, 100);
+  turbidityNTU = adcToNTU(turbidityADC);
+  turbidityPercent = constrain(100.0 - (turbidityNTU * 1.0), 0, 100);
   
-  if (turbidityPercent >= 80)      turbStatus = "SANGAT JERNIH";
-  else if (turbidityPercent >= 50) turbStatus = "CUKUP JERNIH";
-  else if (turbidityPercent >= 20) turbStatus = "AGAK KERUH";
-  else                             turbStatus = "KERUH";
+  if (turbidityNTU <= 0.5) {
+    turbStatus = "SANGAT JERNIH";
+  } else if (turbidityNTU <= 1.0) {
+    turbStatus = "JERNIH";
+  } else if (turbidityNTU <= 2.0) {
+    turbStatus = "CUKUP JERNIH";
+  } else if (turbidityNTU <= 5.0) {
+    turbStatus = "AGAK KERUH";
+  } else if (turbidityNTU <= 10) {
+    turbStatus = "KERUH";
+  } else {
+    turbStatus = "SANGAT KERUH";
+  }
 }
 
 void readSensors() {
@@ -611,12 +608,10 @@ void finishFlowCalibration() {
 // ============================================================
 
 void updateFilterHealth() {
-  // Volume factor (40%)
   float volumeFactor = (displayVolumeL / 30000.0) * 100.0;
   if (volumeFactor > 100.0) volumeFactor = 100.0;
   float volumeScore = 100.0 - volumeFactor;
   
-  // TDS factor (30%)
   float tdsScore = 0.0;
   if (tdsValue <= 50) tdsScore = 100.0;
   else if (tdsValue <= 100) tdsScore = 80.0;
@@ -625,13 +620,17 @@ void updateFilterHealth() {
   else if (tdsValue <= 400) tdsScore = 20.0;
   else tdsScore = 0.0;
   
-  // Turbidity factor (30%)
-  float turbidityScore = turbidityPercent;
+  float turbidityScore = 0.0;
+  if (turbidityNTU <= 1.0) turbidityScore = 100.0;
+  else if (turbidityNTU <= 2.0) turbidityScore = 80.0;
+  else if (turbidityNTU <= 5.0) turbidityScore = 60.0;
+  else if (turbidityNTU <= 10.0) turbidityScore = 40.0;
+  else if (turbidityNTU <= 20.0) turbidityScore = 20.0;
+  else turbidityScore = 0.0;
   
   filterHealth = (volumeScore * 0.4) + (tdsScore * 0.3) + (turbidityScore * 0.3);
   filterHealth = constrain(filterHealth, 0.0, 100.0);
   
-  // Calculate days left
   float avgDaily = 0;
   int count = 0;
   for (int i = 0; i < 7; i++) {
@@ -648,7 +647,7 @@ void updateFilterHealth() {
 
 void updateDailyVolume() {
   unsigned long now = millis();
-  if (now - lastDayUpdate >= 86400000UL) {  // 24 jam
+  if (now - lastDayUpdate >= 86400000UL) {
     dailyVolume[dailyIndex] = displayVolumeL;
     dailyIndex = (dailyIndex + 1) % 7;
     lastDayUpdate = now;
@@ -674,15 +673,13 @@ void resetFilterHealth() {
 // ============================================================
 
 void checkWaterQuality() {
-  bool layak = isWaterLayak(phValue, tdsValue, turbidityPercent, temperatureC);
+  bool layak = isWaterLayak(phValue, tdsValue, turbidityNTU, temperatureC);
   waterStatus = layak ? "LAYAK" : "TIDAK LAYAK";
-  
-  // Update LEDs
   updateLEDs();
 }
 
 void updateLEDs() {
-  bool layak = isWaterLayak(phValue, tdsValue, turbidityPercent, temperatureC);
+  bool layak = isWaterLayak(phValue, tdsValue, turbidityNTU, temperatureC);
   
   if (layak) {
     digitalWrite(LED_HIJAU_PIN, HIGH);
@@ -694,13 +691,17 @@ void updateLEDs() {
 }
 
 // ============================================================
-//   LCD FUNCTIONS
+//   LCD FUNCTIONS - MINIMALIST STYLE
+//   Baris 1: Title + WiFi
+//   Baris 2: pH 7.20  TDS 18
+//   Baris 3: 96.7NTU  25.0C
+//   Baris 4: STATUS: LAYAK
 // ============================================================
 
 void updateLCD() {
   lcd.clear();
   
-  // Baris 1: Title
+  // ===== BARIS 1: Title + WiFi =====
   lcd.setCursor(0, 0);
   lcd.print("SMART RO MONITOR");
   if (wifiConnected) {
@@ -708,20 +709,21 @@ void updateLCD() {
     lcd.print("W");
   }
   
-  // Baris 2: pH & TDS
+  // ===== BARIS 2: pH & TDS =====
   lcd.setCursor(0, 1);
   char buf[21];
-  sprintf(buf, "pH:%.2f  TDS:%.0f", phValue, tdsValue);
+  sprintf(buf, "pH %.2f  TDS %.0f", phValue, tdsValue);
   lcd.print(buf);
   
-  // Baris 3: Turbidity & Temp
+  // ===== BARIS 3: Turbidity NTU & Temperature (TANPA LABEL) =====
   lcd.setCursor(0, 2);
-  sprintf(buf, "Turb:%.0f%%  T:%.1fC", turbidityPercent, temperatureC);
+  // Format: "XX.XNTU  XX.XC" (14 karakter, pas di 20 karakter)
+  sprintf(buf, "%.1fNTU  %.1fC", turbidityNTU, temperatureC);
   lcd.print(buf);
   
-  // Baris 4: Status
+  // ===== BARIS 4: Status =====
   lcd.setCursor(0, 3);
-  bool layak = isWaterLayak(phValue, tdsValue, turbidityPercent, temperatureC);
+  bool layak = isWaterLayak(phValue, tdsValue, turbidityNTU, temperatureC);
   if (layak) {
     lcd.print("STATUS: LAYAK    ");
   } else {
@@ -781,7 +783,7 @@ void publishMQTT() {
     "{"
     "\"ph\":%.2f,"
     "\"tds\":%.0f,"
-    "\"turbidity\":%.0f,"
+    "\"turbidity_ntu\":%.2f,"
     "\"temperature\":%.2f,"
     "\"status\":\"%s\","
     "\"health\":%.0f,"
@@ -791,7 +793,7 @@ void publishMQTT() {
     "}",
     phValue,
     tdsValue,
-    turbidityPercent,
+    turbidityNTU,
     temperatureC,
     waterStatus.c_str(),
     filterHealth,
@@ -823,7 +825,7 @@ void printStatus() {
   Serial.printf("║ pH          : %6.2f                  ║\n", phValue);
   Serial.printf("║ TDS         : %6.0f ppm              ║\n", tdsValue);
   Serial.printf("║ Temperature : %6.2f °C               ║\n", temperatureC);
-  Serial.printf("║ Turbidity   : %6.0f %% (%s)   ║\n", turbidityPercent, turbStatus.c_str());
+  Serial.printf("║ Turbidity   : %6.2f NTU (%s)   ║\n", turbidityNTU, turbStatus.c_str());
   Serial.println("╠═══════════════════════════════════════╣");
   Serial.printf("║ Volume      : %8.3f L               ║\n", displayVolumeL);
   Serial.printf("║ Flow Rate   : %8.2f L/min           ║\n", flowRateLPM);
@@ -837,7 +839,106 @@ void printStatus() {
   Serial.printf("║ MQTT        : %s                    ║\n", mqttConnected ? "Connected" : "Disconnected");
   Serial.println("╚═══════════════════════════════════════╝\n");
   
-  // Print TDS calibration info
-  Serial.println("[TDS INFO] Calibration: Segmented Linear (Improved)");
-  Serial.printf("[TDS INFO] Raw Voltage: %.4f V\n", tdsBuf[(tdsIdx - 1 + AVG_SAMPLES) % AVG_SAMPLES]);
+  String detail = getDetailedStatus(phValue, tdsValue, turbidityNTU, temperatureC);
+  Serial.printf("[DETAIL] %s\n", detail.c_str());
+  Serial.printf("[TDS] Raw Voltage: %.4f V\n", tdsBuf[(tdsIdx - 1 + AVG_SAMPLES) % AVG_SAMPLES]);
+  Serial.printf("[TURB] ADC: %d, NTU: %.2f\n", turbidityADC, turbidityNTU);
+}
+
+// ============================================================
+//   TURBIDITY DEBUG & CALIBRATION
+// ============================================================
+
+void debugTurbidity() {
+  Serial.println("\n╔═══════════════════════════════════════╗");
+  Serial.println("║        TURBIDITY DEBUG              ║");
+  Serial.println("╠═══════════════════════════════════════╣");
+  Serial.printf("║ ADC Raw       : %6d                  ║\n", turbidityADC);
+  Serial.printf("║ NTU           : %8.2f               ║\n", turbidityNTU);
+  Serial.printf("║ Status        : %s             ║\n", turbStatus.c_str());
+  Serial.printf("║ TURB_AIR_ADC  : %6d                  ║\n", TURB_AIR_ADC);
+  Serial.printf("║ TURB_KERUH_ADC: %6d                  ║\n", TURB_KERUH_ADC);
+  Serial.println("╚═══════════════════════════════════════╝\n");
+  
+  if (turbidityADC > 3500) {
+    Serial.println("✅ ADC > 3500 → Air SANGAT JERNIH (NTU < 1.0)");
+    Serial.println("   → Status seharusnya LAYAK");
+  } else if (turbidityADC > 3000) {
+    Serial.println("✅ ADC 3000-3500 → Air JERNIH (NTU 1.0-5.0)");
+    Serial.println("   → Status seharusnya LAYAK");
+  } else if (turbidityADC > 2500) {
+    Serial.println("⚠️ ADC 2500-3000 → Air AGAK KERUH (NTU 5.0-20.0)");
+  } else if (turbidityADC > 2000) {
+    Serial.println("❌ ADC 2000-2500 → Air KERUH (NTU 20.0-50.0)");
+  } else {
+    Serial.println("❌ ADC < 2000 → Air SANGAT KERUH (NTU > 50.0)");
+  }
+  
+  Serial.println("\nRekomendasi:");
+  if (turbidityADC < 3000) {
+    Serial.println("1. Periksa sensor di air jernih → ADC harus > 3500");
+    Serial.println("2. Bersihkan lensa sensor turbidity");
+    Serial.println("3. Periksa koneksi kabel sensor");
+    Serial.println("4. Kalibrasi ulang dengan perintah 'cal_turb'");
+  } else {
+    Serial.println("1. Sensor terlihat normal");
+    Serial.println("2. Jika air memang jernih, kalibrasi ulang dengan 'cal_turb'");
+  }
+  Serial.println("");
+}
+
+void calibrateTurbidity() {
+  Serial.println("\n╔═══════════════════════════════════════╗");
+  Serial.println("║     TURBIDITY CALIBRATION           ║");
+  Serial.println("╚═══════════════════════════════════════╝\n");
+  
+  Serial.println("Step 1: Place sensor in CLEAR water");
+  Serial.println("(Air yang sangat jernih / aquades)");
+  Serial.println("Press any key when ready...");
+  while (!Serial.available()) {
+    delay(100);
+  }
+  Serial.read();
+  
+  long sumClear = 0;
+  Serial.print("Reading ADC in clear water...");
+  for (int i = 0; i < 50; i++) {
+    sumClear += analogRead(TURBIDITY_PIN);
+    delay(50);
+    if (i % 10 == 0) Serial.print(".");
+  }
+  int clearADC = sumClear / 50;
+  Serial.println(" DONE!");
+  Serial.printf("ADC in CLEAR water: %d\n", clearADC);
+  
+  Serial.println("\nStep 2: Place sensor in TURBID water");
+  Serial.println("(Air yang keruh / campuran tanah)");
+  Serial.println("Press any key when ready...");
+  while (!Serial.available()) {
+    delay(100);
+  }
+  Serial.read();
+  
+  long sumTurbid = 0;
+  Serial.print("Reading ADC in turbid water...");
+  for (int i = 0; i < 50; i++) {
+    sumTurbid += analogRead(TURBIDITY_PIN);
+    delay(50);
+    if (i % 10 == 0) Serial.print(".");
+  }
+  int turbidADC = sumTurbid / 50;
+  Serial.println(" DONE!");
+  Serial.printf("ADC in TURBID water: %d\n", turbidADC);
+  
+  TURB_AIR_ADC = clearADC;
+  TURB_KERUH_ADC = turbidADC;
+  
+  Serial.println("\n╔═══════════════════════════════════════╗");
+  Serial.println("║     CALIBRATION COMPLETE            ║");
+  Serial.println("╠═══════════════════════════════════════╣");
+  Serial.printf("║ TURB_AIR_ADC   : %6d                  ║\n", TURB_AIR_ADC);
+  Serial.printf("║ TURB_KERUH_ADC : %6d                  ║\n", TURB_KERUH_ADC);
+  Serial.println("╚═══════════════════════════════════════╝\n");
+  
+  Serial.println("Calibration saved! Test with 'status' command");
 }
