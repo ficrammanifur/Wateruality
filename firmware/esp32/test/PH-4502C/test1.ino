@@ -21,9 +21,9 @@ float phFiltered = 0.0;
 // ================================
 // KONSTANTA KALIBRASI REAL KAMU
 // ================================
-const float V4  = 1.304;  const float PH4  = 4.00;
-const float V7  = 1.048;  const float PH7  = 6.86;
-const float V9  = 0.835;  const float PH9  = 9.18;
+const float V4  = 1.350;  const float PH4  = 4.00;
+const float V7  = 0.874;  const float PH7  = 6.86;
+const float V9  = 0.485;  const float PH9  = 9.18;
 
 // ================================
 // FUNGSI INTERPOLASI 3 TITIK
