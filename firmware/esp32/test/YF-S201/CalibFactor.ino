@@ -1,4 +1,4 @@
-const int flowSensorPin = 18;
+const int flowSensorPin = 19;
 
 volatile int pulseCount = 0;
 float calibrationFactor = 4.5; // Faktor kalibrasi sensor (umumnya 4.5 untuk YF-S201, sesuaikan jika perlu)
