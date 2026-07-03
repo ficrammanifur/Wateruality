@@ -1,36 +1,74 @@
 // ============================================================
-//   DASHBOARD SCRIPT - FIXED VERSION
-//   MQTT over WebSocket dengan Paho MQTT
+//   REAL-TIME DASHBOARD - ESP32 MQTT INTEGRATION
+//   Data langsung dari ESP32 melalui MQTT broker
 // ============================================================
 
-// ==================== CONFIGURATION ====================
-const MQTT_CONFIG = {
-    broker: 'wss://broker.hivemq.com:8000/mqtt',
-    clientId: 'dashboard_' + Math.random().toString(16).substr(2, 8),
-    topics: ['watermon/all']
+// ==================== KONFIGURASI ====================
+const CONFIG = {
+    // MQTT Broker (sama dengan ESP32)
+    mqtt: {
+        broker: 'wss://broker.hivemq.com:8000/mqtt',
+        clientId: 'dashboard_' + Math.random().toString(16).substr(2, 8),
+        topics: ['watermon/all']
+    },
+    // Jumlah data point untuk grafik
+    maxDataPoints: 50,
+    // Timeout untuk koneksi
+    timeout: 10000
 };
 
 // ==================== STATE ====================
-let chartData = {
-    ph: {
-        labels: [],
-        values: []
+let state = {
+    connected: false,
+    mqttClient: null,
+    dataCount: 0,
+    lastData: null,
+    charts: {
+        ph: { labels: [], values: [] },
+        tds: { labels: [], values: [] }
     },
-    tds: {
-        labels: [],
-        values: []
-    }
+    isDemo: false
 };
 
-let isConnected = false;
-let mqttClient = null;
+// ==================== DOM REFS ====================
+const DOM = {
+    // Status
+    mqttStatus: document.getElementById('mqttStatus'),
+    espStatus: document.getElementById('espStatus'),
+    connectionStatus: document.getElementById('connectionStatus'),
+    lastUpdate: document.getElementById('lastUpdate'),
+    lastMessage: document.getElementById('lastMessage'),
+    dataCount: document.getElementById('dataCount'),
+    
+    // Water Status
+    waterStatus: document.getElementById('waterStatus'),
+    statusDetail: document.getElementById('statusDetail'),
+    
+    // Filter Health
+    filterHealth: document.getElementById('filterHealth'),
+    healthBar: document.getElementById('healthBar'),
+    daysLeft: document.getElementById('daysLeft'),
+    volumeTotal: document.getElementById('volumeTotal'),
+    
+    // Sensors
+    phValue: document.getElementById('phValue'),
+    phStatus: document.getElementById('phStatus'),
+    tdsValue: document.getElementById('tdsValue'),
+    tdsStatus: document.getElementById('tdsStatus'),
+    turbidityValue: document.getElementById('turbidityValue'),
+    turbidityStatus: document.getElementById('turbidityStatus'),
+    tempValue: document.getElementById('tempValue'),
+    tempStatus: document.getElementById('tempStatus'),
+    flowRate: document.getElementById('flowRate'),
+    pumpStatus: document.getElementById('pumpStatus')
+};
 
-// ==================== CHART INITIALIZATION ====================
+// ==================== CHART INIT ====================
 function initCharts() {
-    const ctxPh = document.getElementById('phChart').getContext('2d');
-    const ctxTds = document.getElementById('tdsChart').getContext('2d');
+    const phCtx = document.getElementById('phChart').getContext('2d');
+    const tdsCtx = document.getElementById('tdsChart').getContext('2d');
 
-    const phChart = new Chart(ctxPh, {
+    const phChart = new Chart(phCtx, {
         type: 'line',
         data: {
             labels: [],
@@ -39,28 +77,37 @@ function initCharts() {
                 data: [],
                 borderColor: '#4299e1',
                 backgroundColor: 'rgba(66, 153, 225, 0.1)',
+                borderWidth: 2,
                 tension: 0.3,
                 fill: true,
-                pointRadius: 2
+                pointRadius: 2,
+                pointBackgroundColor: '#4299e1'
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            animation: { duration: 300 },
             plugins: {
-                legend: { display: false }
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return `pH: ${context.parsed.y.toFixed(2)}`;
+                        }
+                    }
+                }
             },
             scales: {
                 y: {
                     min: 0,
                     max: 14,
-                    title: {
-                        display: true,
-                        text: 'pH'
-                    }
+                    grid: { color: 'rgba(0,0,0,0.05)' },
+                    title: { display: true, text: 'pH', font: { size: 11 } }
                 },
                 x: {
-                    ticks: {
+                    grid: { display: false },
+                    ticks: { 
                         maxTicksLimit: 10,
                         font: { size: 8 }
                     }
@@ -69,7 +116,7 @@ function initCharts() {
         }
     });
 
-    const tdsChart = new Chart(ctxTds, {
+    const tdsChart = new Chart(tdsCtx, {
         type: 'line',
         data: {
             labels: [],
@@ -78,28 +125,37 @@ function initCharts() {
                 data: [],
                 borderColor: '#48bb78',
                 backgroundColor: 'rgba(72, 187, 120, 0.1)',
+                borderWidth: 2,
                 tension: 0.3,
                 fill: true,
-                pointRadius: 2
+                pointRadius: 2,
+                pointBackgroundColor: '#48bb78'
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            animation: { duration: 300 },
             plugins: {
-                legend: { display: false }
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return `TDS: ${context.parsed.y.toFixed(0)} ppm`;
+                        }
+                    }
+                }
             },
             scales: {
                 y: {
                     min: 0,
                     max: 500,
-                    title: {
-                        display: true,
-                        text: 'ppm'
-                    }
+                    grid: { color: 'rgba(0,0,0,0.05)' },
+                    title: { display: true, text: 'ppm', font: { size: 11 } }
                 },
                 x: {
-                    ticks: {
+                    grid: { display: false },
+                    ticks: { 
                         maxTicksLimit: 10,
                         font: { size: 8 }
                     }
@@ -111,289 +167,372 @@ function initCharts() {
     return { phChart, tdsChart };
 }
 
-// ==================== INITIALIZE ====================
-const { phChart, tdsChart } = initCharts();
+const charts = initCharts();
 
 // ==================== MQTT CLIENT ====================
 function initMQTT() {
     try {
-        // Check if Paho is loaded
         if (typeof Paho === 'undefined') {
-            console.error('Paho MQTT library not loaded!');
-            updateConnectionStatus(false);
+            console.error('❌ Paho MQTT library not loaded!');
+            updateConnectionStatus(false, 'Library Error');
             setTimeout(initMQTT, 3000);
             return;
         }
 
-        mqttClient = new Paho.MQTT.Client(
-            MQTT_CONFIG.broker,
-            MQTT_CONFIG.clientId
+        console.log('🔌 Initializing MQTT client...');
+        
+        state.mqttClient = new Paho.MQTT.Client(
+            CONFIG.mqtt.broker,
+            CONFIG.mqtt.clientId
         );
 
-        mqttClient.onConnectionLost = (response) => {
-            isConnected = false;
-            updateConnectionStatus(false);
-            console.log('MQTT Connection Lost:', response.errorMessage);
-            // Auto reconnect after 5 seconds
-            setTimeout(initMQTT, 5000);
-        };
-
-        mqttClient.onMessageArrived = (message) => {
-            try {
-                const data = JSON.parse(message.payloadString);
-                updateDashboard(data);
-            } catch (e) {
-                console.error('Error parsing MQTT message:', e);
-            }
-        };
+        state.mqttClient.onConnectionLost = onConnectionLost;
+        state.mqttClient.onMessageArrived = onMessageArrived;
 
         connectMQTT();
     } catch (e) {
-        console.error('Error initializing MQTT:', e);
-        updateConnectionStatus(false);
+        console.error('❌ MQTT Init Error:', e);
+        updateConnectionStatus(false, 'Init Error');
         setTimeout(initMQTT, 5000);
     }
 }
 
 function connectMQTT() {
-    if (!mqttClient) return;
+    if (!state.mqttClient) return;
+
+    console.log('🔄 Connecting to MQTT broker...');
+    updateConnectionStatus(false, 'Connecting...');
 
     const options = {
         timeout: 10,
         onSuccess: () => {
-            isConnected = true;
-            updateConnectionStatus(true);
-            console.log('MQTT Connected');
+            console.log('✅ MQTT Connected!');
+            state.connected = true;
+            updateConnectionStatus(true, 'Connected');
             
-            // Subscribe to topics
-            MQTT_CONFIG.topics.forEach(topic => {
-                mqttClient.subscribe(topic);
-                console.log(`Subscribed to: ${topic}`);
+            // Subscribe ke topic ESP32
+            CONFIG.mqtt.topics.forEach(topic => {
+                state.mqttClient.subscribe(topic);
+                console.log(`📡 Subscribed to: ${topic}`);
             });
+            
+            // Kirim status online
+            DOM.espStatus.textContent = 'ESP32: Online';
+            DOM.espStatus.className = 'status-badge online';
         },
         onFailure: (error) => {
-            isConnected = false;
-            updateConnectionStatus(false);
-            console.error('MQTT Connection Failed:', error.errorMessage);
+            console.error('❌ MQTT Connection Failed:', error.errorMessage);
+            state.connected = false;
+            updateConnectionStatus(false, 'Failed');
             
-            // Reconnect after 5 seconds
+            // Retry setelah 5 detik
             setTimeout(connectMQTT, 5000);
         }
     };
     
     try {
-        mqttClient.connect(options);
+        state.mqttClient.connect(options);
     } catch (e) {
-        console.error('MQTT Connect error:', e);
+        console.error('❌ MQTT Connect Error:', e);
         setTimeout(connectMQTT, 5000);
+    }
+}
+
+function onConnectionLost(response) {
+    state.connected = false;
+    updateConnectionStatus(false, 'Lost');
+    console.log('🔌 MQTT Connection Lost:', response.errorMessage);
+    DOM.espStatus.textContent = 'ESP32: Offline';
+    DOM.espStatus.className = 'status-badge offline';
+    
+    // Auto reconnect
+    setTimeout(connectMQTT, 5000);
+}
+
+// ==================== MESSAGE HANDLER ====================
+function onMessageArrived(message) {
+    try {
+        const data = JSON.parse(message.payloadString);
+        console.log('📨 Data received:', data);
+        
+        // Update state
+        state.lastData = data;
+        state.dataCount++;
+        DOM.dataCount.textContent = `📊 ${state.dataCount} data points`;
+        DOM.lastMessage.textContent = `📨 Last message: ${new Date().toLocaleTimeString()}`;
+        
+        // Update dashboard
+        updateDashboard(data);
+        updateCharts(data);
+        updateESPStatus(data);
+        
+    } catch (e) {
+        console.error('❌ Error parsing message:', e);
     }
 }
 
 // ==================== DASHBOARD UPDATE ====================
 function updateDashboard(data) {
-    try {
-        // Update timestamp
-        const now = new Date();
-        document.getElementById('lastUpdate').textContent = 
-            `Last Update: ${now.toLocaleString('id-ID')}`;
-        
-        // Status Air
-        const statusElement = document.getElementById('waterStatus');
-        const statusText = statusElement.querySelector('.status-text');
-        const statusIcon = statusElement.querySelector('.status-icon');
-        
-        if (data.status === 'LAYAK') {
-            statusText.textContent = 'LAYAK';
-            statusText.className = 'status-text layak';
-            statusIcon.textContent = '✅';
-            document.getElementById('statusDetail').textContent = 'Air layak minum';
-        } else {
-            statusText.textContent = 'TIDAK LAYAK';
-            statusText.className = 'status-text tidak-layak';
-            statusIcon.textContent = '❌';
-            document.getElementById('statusDetail').textContent = 'Air tidak layak minum';
-        }
-        
-        // pH
-        if (data.ph !== undefined) {
-            document.getElementById('phValue').textContent = data.ph.toFixed(2);
-            const phStatus = document.getElementById('phStatus');
-            if (data.ph >= 6.5 && data.ph <= 8.5) {
-                phStatus.textContent = 'Normal';
-                phStatus.className = 'status-indicator normal';
-            } else {
-                phStatus.textContent = 'Tidak Normal';
-                phStatus.className = 'status-indicator danger';
-            }
-            updateChart('ph', data.ph);
-        }
-        
-        // TDS
-        if (data.tds !== undefined) {
-            document.getElementById('tdsValue').textContent = data.tds.toFixed(0);
-            const tdsStatus = document.getElementById('tdsStatus');
-            if (data.tds <= 500) {
-                tdsStatus.textContent = 'Normal';
-                tdsStatus.className = 'status-indicator normal';
-            } else {
-                tdsStatus.textContent = 'Tinggi';
-                tdsStatus.className = 'status-indicator danger';
-            }
-            updateChart('tds', data.tds);
-        }
-        
-        // Turbidity
-        if (data.turbidity !== undefined) {
-            document.getElementById('turbidityValue').textContent = data.turbidity.toFixed(0);
-            const turbStatus = document.getElementById('turbidityStatus');
-            if (data.turbidity >= 50) {
-                turbStatus.textContent = 'Jernih';
-                turbStatus.className = 'status-indicator normal';
-            } else {
-                turbStatus.textContent = 'Keruh';
-                turbStatus.className = 'status-indicator danger';
-            }
-        }
-        
-        // Temperature
-        if (data.temperature !== undefined) {
-            document.getElementById('tempValue').textContent = data.temperature.toFixed(1);
-            const tempStatus = document.getElementById('tempStatus');
-            if (data.temperature >= 15 && data.temperature <= 35) {
-                tempStatus.textContent = 'Normal';
-                tempStatus.className = 'status-indicator normal';
-            } else {
-                tempStatus.textContent = 'Tidak Normal';
-                tempStatus.className = 'status-indicator warning';
-            }
-        }
-        
-        // Flow Rate
-        if (data.flow_rate !== undefined) {
-            document.getElementById('flowRate').textContent = data.flow_rate.toFixed(1);
-        }
-        
-        // Filter Health
-        if (data.health !== undefined) {
-            const health = parseFloat(data.health);
-            document.getElementById('filterHealth').textContent = `${health.toFixed(0)}%`;
-            
-            const bar = document.getElementById('healthBar');
-            bar.style.width = `${Math.min(health, 100)}%`;
-            
-            if (health >= 70) {
-                bar.className = 'progress-fill good';
-            } else if (health >= 40) {
-                bar.className = 'progress-fill warning';
-            } else {
-                bar.className = 'progress-fill danger';
-            }
-        }
-        
-        // Days Left
-        if (data.days_left !== undefined) {
-            document.getElementById('daysLeft').textContent = 
-                `Estimasi: ${data.days_left} Hari`;
-        }
-        
-        // Volume
-        if (data.volume !== undefined) {
-            document.getElementById('volumeTotal').textContent = 
-                `Volume: ${data.volume.toFixed(1)} L`;
-        }
-        
-        // Pump Status
-        if (data.pump) {
-            const pumpElement = document.getElementById('pumpStatus');
-            if (data.pump === 'ON') {
-                pumpElement.textContent = '🟢 ON';
-                pumpElement.className = 'pump-badge on';
-            } else {
-                pumpElement.textContent = '🔴 OFF';
-                pumpElement.className = 'pump-badge off';
-            }
-        }
-    } catch (e) {
-        console.error('Error updating dashboard:', e);
-    }
-}
-
-function updateConnectionStatus(connected) {
-    const status = document.getElementById('mqttStatus');
-    if (connected) {
-        status.textContent = 'MQTT: Online';
-        status.className = 'status-badge online';
+    // Timestamp
+    const now = new Date();
+    DOM.lastUpdate.textContent = `⏱️ ${now.toLocaleTimeString('id-ID')}`;
+    
+    // ===== STATUS AIR =====
+    const statusText = DOM.waterStatus.querySelector('.status-text');
+    const statusIcon = DOM.waterStatus.querySelector('.status-icon');
+    
+    if (data.status === 'LAYAK') {
+        statusText.textContent = 'LAYAK';
+        statusText.className = 'status-text layak';
+        statusIcon.textContent = '✅';
+        DOM.statusDetail.textContent = '✨ Air layak minum';
+        DOM.statusDetail.style.color = '#48bb78';
     } else {
-        status.textContent = 'MQTT: Offline';
-        status.className = 'status-badge offline';
+        statusText.textContent = 'TIDAK LAYAK';
+        statusText.className = 'status-text tidak-layak';
+        statusIcon.textContent = '❌';
+        DOM.statusDetail.textContent = '⚠️ Air tidak layak minum';
+        DOM.statusDetail.style.color = '#fc8181';
+    }
+    
+    // ===== FILTER HEALTH =====
+    if (data.health !== undefined) {
+        const health = parseFloat(data.health);
+        DOM.filterHealth.textContent = `${health.toFixed(0)}%`;
+        DOM.healthBar.style.width = `${Math.min(health, 100)}%`;
+        
+        DOM.healthBar.className = 'progress-fill ' + 
+            (health >= 70 ? 'good' : health >= 40 ? 'warning' : 'danger');
+    }
+    
+    if (data.days_left !== undefined) {
+        DOM.daysLeft.textContent = `📅 ${data.days_left} Hari`;
+    }
+    
+    if (data.volume !== undefined) {
+        DOM.volumeTotal.textContent = `💧 ${data.volume.toFixed(1)} L`;
+    }
+    
+    // ===== pH =====
+    if (data.ph !== undefined) {
+        DOM.phValue.textContent = data.ph.toFixed(2);
+        const phStatus = DOM.phStatus;
+        if (data.ph >= 6.5 && data.ph <= 8.5) {
+            phStatus.textContent = '✅ Normal';
+            phStatus.className = 'status-indicator normal';
+        } else if (data.ph < 6.5) {
+            phStatus.textContent = '⚠️ Asam';
+            phStatus.className = 'status-indicator warning';
+        } else {
+            phStatus.textContent = '⚠️ Basa';
+            phStatus.className = 'status-indicator danger';
+        }
+    }
+    
+    // ===== TDS =====
+    if (data.tds !== undefined) {
+        DOM.tdsValue.textContent = data.tds.toFixed(0);
+        const tdsStatus = DOM.tdsStatus;
+        if (data.tds <= 50) {
+            tdsStatus.textContent = '✅ Sangat Baik';
+            tdsStatus.className = 'status-indicator normal';
+        } else if (data.tds <= 200) {
+            tdsStatus.textContent = '✅ Baik';
+            tdsStatus.className = 'status-indicator normal';
+        } else if (data.tds <= 500) {
+            tdsStatus.textContent = '⚠️ Cukup';
+            tdsStatus.className = 'status-indicator warning';
+        } else {
+            tdsStatus.textContent = '❌ Tinggi';
+            tdsStatus.className = 'status-indicator danger';
+        }
+    }
+    
+    // ===== TURBIDITY =====
+    if (data.turbidity !== undefined) {
+        DOM.turbidityValue.textContent = data.turbidity.toFixed(0);
+        const turbStatus = DOM.turbidityStatus;
+        if (data.turbidity >= 80) {
+            turbStatus.textContent = '✅ Sangat Jernih';
+            turbStatus.className = 'status-indicator normal';
+        } else if (data.turbidity >= 50) {
+            turbStatus.textContent = '✅ Jernih';
+            turbStatus.className = 'status-indicator normal';
+        } else if (data.turbidity >= 20) {
+            turbStatus.textContent = '⚠️ Agak Keruh';
+            turbStatus.className = 'status-indicator warning';
+        } else {
+            turbStatus.textContent = '❌ Keruh';
+            turbStatus.className = 'status-indicator danger';
+        }
+    }
+    
+    // ===== TEMPERATURE =====
+    if (data.temperature !== undefined) {
+        DOM.tempValue.textContent = data.temperature.toFixed(1);
+        const tempStatus = DOM.tempStatus;
+        if (data.temperature >= 15 && data.temperature <= 35) {
+            tempStatus.textContent = '✅ Normal';
+            tempStatus.className = 'status-indicator normal';
+        } else {
+            tempStatus.textContent = '⚠️ Tidak Normal';
+            tempStatus.className = 'status-indicator warning';
+        }
+    }
+    
+    // ===== FLOW RATE =====
+    if (data.flow_rate !== undefined) {
+        DOM.flowRate.textContent = data.flow_rate.toFixed(1);
+    }
+    
+    // ===== PUMP =====
+    if (data.pump) {
+        const pumpEl = DOM.pumpStatus;
+        if (data.pump === 'ON') {
+            pumpEl.innerHTML = '<span class="dot"></span> ON';
+            pumpEl.className = 'pump-badge on';
+        } else {
+            pumpEl.innerHTML = '<span class="dot"></span> OFF';
+            pumpEl.className = 'pump-badge off';
+        }
     }
 }
 
-// ==================== CHART FUNCTIONS ====================
-function updateChart(type, value) {
+// ==================== CHARTS UPDATE ====================
+function updateCharts(data) {
     const now = new Date().toLocaleTimeString('id-ID');
-    const data = chartData[type];
     
-    data.labels.push(now);
-    data.values.push(parseFloat(value));
-    
-    // Keep only last 30 data points
-    if (data.labels.length > 30) {
-        data.labels.shift();
-        data.values.shift();
+    // Update pH chart
+    if (data.ph !== undefined) {
+        const phData = state.charts.ph;
+        phData.labels.push(now);
+        phData.values.push(parseFloat(data.ph));
+        
+        if (phData.labels.length > CONFIG.maxDataPoints) {
+            phData.labels.shift();
+            phData.values.shift();
+        }
+        
+        charts.phChart.data.labels = phData.labels;
+        charts.phChart.data.datasets[0].data = phData.values;
+        charts.phChart.update('none');
     }
     
-    // Update chart
-    const chart = type === 'ph' ? phChart : tdsChart;
-    chart.data.labels = data.labels;
-    chart.data.datasets[0].data = data.values;
-    chart.update();
+    // Update TDS chart
+    if (data.tds !== undefined) {
+        const tdsData = state.charts.tds;
+        tdsData.labels.push(now);
+        tdsData.values.push(parseFloat(data.tds));
+        
+        if (tdsData.labels.length > CONFIG.maxDataPoints) {
+            tdsData.labels.shift();
+            tdsData.values.shift();
+        }
+        
+        charts.tdsChart.data.labels = tdsData.labels;
+        charts.tdsChart.data.datasets[0].data = tdsData.values;
+        charts.tdsChart.update('none');
+    }
 }
 
-// ==================== DEMO DATA (if no MQTT) ====================
+// ==================== ESP STATUS ====================
+function updateESPStatus(data) {
+    if (data.esp_status) {
+        DOM.espStatus.textContent = `ESP32: ${data.esp_status}`;
+        DOM.espStatus.className = `status-badge ${data.esp_status === 'online' ? 'online' : 'offline'}`;
+    } else {
+        // Jika ada data, berarti ESP32 online
+        DOM.espStatus.textContent = 'ESP32: Online';
+        DOM.espStatus.className = 'status-badge online';
+    }
+}
+
+// ==================== CONNECTION STATUS ====================
+function updateConnectionStatus(connected, status) {
+    const el = DOM.connectionStatus;
+    if (connected) {
+        el.textContent = '● Online';
+        el.className = 'badge badge-success';
+        DOM.mqttStatus.textContent = 'MQTT: Online';
+        DOM.mqttStatus.className = 'status-badge online';
+    } else {
+        el.textContent = `● ${status || 'Offline'}`;
+        el.className = 'badge badge-danger';
+        DOM.mqttStatus.textContent = `MQTT: ${status || 'Offline'}`;
+        DOM.mqttStatus.className = 'status-badge offline';
+    }
+}
+
+// ==================== DEMO DATA (FALLBACK) ====================
 function generateDemoData() {
-    const demo = {
-        ph: 7.0 + (Math.random() - 0.5) * 0.3,
-        tds: 100 + Math.random() * 50,
-        turbidity: 70 + Math.random() * 20,
+    const now = new Date();
+    const basePh = 7.0 + Math.sin(now.getSeconds() / 60 * Math.PI) * 0.2;
+    const baseTds = 100 + Math.sin(now.getSeconds() / 30 * Math.PI) * 30;
+    
+    return {
+        ph: Math.max(0, Math.min(14, basePh + (Math.random() - 0.5) * 0.1)),
+        tds: Math.max(0, baseTds + (Math.random() - 0.5) * 10),
+        turbidity: Math.max(0, Math.min(100, 70 + (Math.random() - 0.5) * 15)),
         temperature: 25 + (Math.random() - 0.5) * 2,
-        status: Math.random() > 0.2 ? 'LAYAK' : 'TIDAK LAYAK',
-        health: 80 + Math.random() * 15,
+        status: Math.random() > 0.15 ? 'LAYAK' : 'TIDAK LAYAK',
+        health: Math.max(0, Math.min(100, 80 + (Math.random() - 0.5) * 15)),
         days_left: Math.floor(Math.random() * 30) + 10,
         volume: 15000 + Math.random() * 5000,
-        flow_rate: 2 + Math.random() * 3,
+        flow_rate: Math.max(0, 2 + (Math.random() - 0.5) * 3),
         pump: Math.random() > 0.3 ? 'ON' : 'OFF'
     };
-    return demo;
 }
 
-// ==================== MAIN ====================
-console.log('Dashboard starting...');
-console.log('Chart.js version:', Chart.version);
-console.log('Paho MQTT available:', typeof Paho !== 'undefined');
-
-// Initialize MQTT
-initMQTT();
-
-// Fallback: Jika MQTT tidak bisa connect, gunakan demo data
+// ==================== DEMO MODE ====================
 let demoInterval = null;
 
-setTimeout(() => {
-    if (!isConnected) {
-        console.log('Using demo data (MQTT not connected)');
-        demoInterval = setInterval(() => {
-            const demoData = generateDemoData();
-            updateDashboard(demoData);
-            updateConnectionStatus(false);
-        }, 3000);
-    }
-}, 10000);
+function startDemoMode() {
+    console.log('🎯 Starting demo mode (no MQTT)');
+    state.isDemo = true;
+    updateConnectionStatus(false, 'Demo Mode');
+    DOM.espStatus.textContent = 'ESP32: Demo';
+    DOM.espStatus.className = 'status-badge warning';
+    
+    // Update setiap 2 detik dengan data demo
+    demoInterval = setInterval(() => {
+        const demoData = generateDemoData();
+        state.dataCount++;
+        DOM.dataCount.textContent = `📊 ${state.dataCount} data points (DEMO)`;
+        DOM.lastMessage.textContent = `📨 Demo: ${new Date().toLocaleTimeString()}`;
+        updateDashboard(demoData);
+        updateCharts(demoData);
+    }, 2000);
+}
 
-// Cleanup interval if connected
-setInterval(() => {
-    if (isConnected && demoInterval) {
+function stopDemoMode() {
+    if (demoInterval) {
         clearInterval(demoInterval);
         demoInterval = null;
-        console.log('Demo data stopped, using real MQTT data');
+        state.isDemo = false;
+        console.log('🔄 Demo mode stopped');
     }
-}, 5000);
+}
+
+// ==================== INIT ====================
+console.log('🚀 Starting Real-Time Dashboard...');
+console.log(`📡 MQTT Broker: ${CONFIG.mqtt.broker}`);
+console.log(`📊 Max data points: ${CONFIG.maxDataPoints}`);
+
+// Start MQTT
+initMQTT();
+
+// Fallback: Jika tidak ada koneksi setelah 10 detik, mulai demo
+setTimeout(() => {
+    if (!state.connected && !state.isDemo) {
+        console.warn('⚠️ No MQTT connection, starting demo mode...');
+        startDemoMode();
+    }
+}, CONFIG.timeout);
+
+// Cek koneksi setiap 10 detik
+setInterval(() => {
+    if (!state.connected && !state.isDemo) {
+        console.log('🔄 Attempting to reconnect MQTT...');
+        connectMQTT();
+    }
+}, 10000);
