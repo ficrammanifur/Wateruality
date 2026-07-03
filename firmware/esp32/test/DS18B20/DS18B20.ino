@@ -13,7 +13,7 @@
 // =============================
 // Konfigurasi
 // =============================
-#define DS18B20_PIN 34
+#define DS18B20_PIN 18
 
 OneWire oneWire(DS18B20_PIN);
 DallasTemperature sensors(&oneWire);
