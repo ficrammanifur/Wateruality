@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart RO Water Quality Monitor - Real-Time</title>
+    <title>Smart RO Water Quality Monitor</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💧</text></svg>">
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -110,20 +110,6 @@
                 <div class="status-indicator" id="tempStatus">Menunggu...</div>
             </div>
 
-            <!-- Pump Status -->
-            <div class="card card-pump">
-                <div class="card-title">
-                    <span>Pompa</span>
-                    <span class="icon">⚡</span>
-                </div>
-                <div class="pump-status">
-                    <span id="pumpStatus" class="pump-badge off">
-                        <span class="dot"></span>
-                        OFF
-                    </span>
-                </div>
-            </div>
-
             <!-- Flow Rate -->
             <div class="card card-flow">
                 <div class="card-title">
@@ -133,6 +119,18 @@
                 <div class="value-display">
                     <span id="flowRate" class="value-large">--</span>
                     <span class="value-unit">L/min</span>
+                </div>
+            </div>
+
+            <!-- Volume Produksi -->
+            <div class="card card-volume">
+                <div class="card-title">
+                    <span>Volume Produksi</span>
+                    <span class="icon">📦</span>
+                </div>
+                <div class="value-display">
+                    <span id="volumeValue" class="value-large">--</span>
+                    <span class="value-unit">Liter</span>
                 </div>
             </div>
         </div>
@@ -155,10 +153,9 @@
 
         <!-- FOOTER -->
         <footer>
-            <p>
-                <span id="dataCount">📊 0 data points</span>
-                <span id="lastMessage">📨 Last message: --</span>
-            </p>
+            <span id="dataCount">📊 0 data points</span>
+            <span id="lastMessage">📨 Last message: --</span>
+            <span id="filterStatus">🔧 Filter: --</span>
         </footer>
     </div>
 
