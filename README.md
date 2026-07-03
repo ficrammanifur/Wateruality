@@ -1,227 +1,203 @@
-# 💧 Smart Water Quality Monitoring System for Reverse Osmosis Depot
+**Berikut adalah `README.md` yang sudah disesuaikan khusus untuk proyek kamu:**
 
-Sistem monitoring kualitas air berbasis ESP32 untuk Depot Air Minum Reverse Osmosis (RO) dengan tampilan dashboard real-time.
+```markdown
+<h1 align="center">💧 SMART RO WATER QUALITY MONITOR</h1>
+<p align="center">
+  <img src="https://via.placeholder.com/800x400/2b6cb0/ffffff?text=Smart+RO+Water+Quality+Monitor" alt="Smart RO Monitor Preview" width="700"/>
+</p>
+<p align="center">
+  <em>Sistem Monitoring Kualitas Air RO Real-time berbasis ESP32 + MQTT</em>
+</p>
+<p align="center">
+  <img src="https://img.shields.io/badge/last%20update-today-brightgreen" />
+  <img src="https://img.shields.io/badge/language-HTML%20%7C%20CSS%20%7C%20JavaScript-blue" />
+  <img src="https://img.shields.io/badge/hardware-ESP32-informational" />
+  <img src="https://img.shields.io/badge/protocol-MQTT-green" />
+  <img src="https://img.shields.io/badge/platform-GitHub%20Pages-orange" />
+  <img src="https://img.shields.io/badge/status-Active-success" />
+</p>
 
-## 📋 Deskripsi Project
+---
 
-Sistem ini dirancang untuk memonitor kualitas air RO secara real-time menggunakan beberapa sensor dan menampilkan data melalui dashboard web. Sistem menggunakan rule-based system untuk menentukan kelayakan air dan menghitung kesehatan filter secara otomatis.
+## 📑 Table of Contents
+- [✨ Overview](#-overview)
+- [🔧 Features](#-features)
+- [🏗️ System Architecture](#️-system-architecture)
+- [📁 Project Structure](#-project-structure)
+- [⚙️ Installation](#️-installation)
+- [🚀 Usage](#-usage)
+- [🧪 Testing](#-testing)
+- [📦 Dependencies](#-dependencies)
+- [🔧 Configuration](#-configuration)
+- [🐞 Troubleshooting](#-troubleshooting)
+- [📄 License](#-license)
 
-## ✨ Fitur
+---
 
-- **Monitoring Real-time**: pH, TDS, Turbidity, Temperature, Flow Rate
-- **Penilaian Air Otomatis**: LAYAK / TIDAK LAYAK (Rule-Based)
-- **Kesehatan Filter**: Perhitungan otomatis berdasarkan volume, TDS, dan turbidity
-- **Estimasi Ganti Filter**: Prediksi hari penggantian filter
-- **Kontrol Otomatis**: Relay pompa ON/OFF berdasarkan kualitas air
-- **Dashboard Web**: Tampilan modern dengan grafik real-time (Chart.js)
-- **MQTT Communication**: Publish data ke broker MQTT
-- **WiFiManager**: Mudah setting WiFi tanpa hardcode SSID/password
+## ✨ Overview
 
-## 🏗️ Arsitektur Sistem
+**Smart RO Water Quality Monitor** adalah sistem monitoring kualitas air Reverse Osmosis secara real-time menggunakan ESP32. Sistem ini memantau parameter penting seperti pH, TDS, Kekeruhan, Suhu, dan Volume produksi, kemudian menampilkan status "LAYAK" atau "TIDAK LAYAK" melalui dashboard web yang dapat diakses dari mana saja.
 
+### 🎯 Fitur Utama
+- Monitoring 5 parameter sensor secara simultan
+- Penilaian otomatis kualitas air (Rule-based)
+- Dashboard real-time dengan grafik
+- Kesehatan filter otomatis
+- Komunikasi MQTT dua arah
+
+---
+
+## 🔧 Features
+
+- ✅ **Real-time Dashboard** – Monitoring langsung via web
+- ✅ **Multi Sensor Integration** – pH, TDS, Turbidity, Temperature, Flow Sensor
+- ✅ **Water Quality Assessment** – Status LAYAK / TIDAK LAYAK otomatis
+- ✅ **Filter Health Monitoring** – Estimasi umur filter
+- ✅ **Flow Rate & Volume Tracking** – Dengan kalibrasi
+- ✅ **MQTT Communication** – Menggunakan HiveMQ Public Broker
+- ✅ **Responsive Design** – Mobile & Desktop friendly
+- ✅ **Auto Reconnect** – MQTT stabil
+- ✅ **GitHub Pages Deployment** – Hosting gratis
+
+---
+
+## 🏗️ System Architecture
+
+```text
+┌─────────────────┐       MQTT              ┌─────────────────┐
+│  Web Dashboard  │ ◄─────────────────────► │   MQTT Broker   │
+│ (GitHub Pages)  │ wss://broker.hivemq.com │     (HiveMQ)    │
+└─────────────────┘                         └─────────────────┘
+                                                   │
+                                                   │ MQTT
+                                                   ▼
+                                           ┌─────────────────┐
+                                           │      ESP32      │
+                                           │ (Sensors + LCD) │
+                                           └─────────────────┘
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                         ESP32                               │
-├─────────────────────────────────────────────────────────────┤
-│  Sensors:                                                   │
-│  ├── pH Sensor (GPIO32)                                     │
-│  ├── TDS Sensor (GPIO33)                                    │
-│  ├── Turbidity Sensor (GPIO35)                              │
-│  ├── DS18B20 Temperature (GPIO25)                           │
-│  └── Flow Sensor (GPIO18 - Interrupt)                       │
-├─────────────────────────────────────────────────────────────┤
-│  Outputs:                                                   │
-│  ├── LCD I2C 20x4                                           │
-│  ├── LED Hijau (GPIO26)                                     │
-│  ├── LED Merah (GPIO27)                                     │
-│  └── Relay Pump (GPIO4)                                     │
-├─────────────────────────────────────────────────────────────┤
-│  Communication:                                             │
-│  └── MQTT → Dashboard Web                                   │
-└─────────────────────────────────────────────────────────────┘
+
+---
+
+## 📁 Project Structure
+
+```text
+smart-ro-monitor/
+├── 📄 index.html                 # Main Dashboard
+├── 📜 script.js                  # MQTT + Logic
+├── 🎨 style.css                  # Styling & Responsive
+├── 📄 README.md                  # Dokumentasi
+├── 📁 esp32/
+│   ├── smart_ro_monitor.ino       # Kode Arduino ESP32
+│   └── water_rules.h              # Aturan kualitas air
+└── 📁 assets/                    # (opsional) Gambar & screenshot
 ```
 
-## 📁 Struktur Folder
+---
 
-```
-Project/
-├── Project.ino                 # Main program
-├── sensors.h                   # Sensor management
-├── water_rules.h              # Water quality rules
-├── mqtt_handler.h             # MQTT communication
-├── lcd_display.h              # LCD display
-├── dashboard/                  # Web dashboard
-│   ├── index.html
-│   ├── style.css
-│   └── script.js
-└── README.md
-```
-
-## 🔌 Wiring ESP32
-
-| Komponen | GPIO ESP32 |
-|----------|------------|
-| pH Sensor | GPIO32 |
-| TDS Sensor | GPIO33 |
-| Turbidity Sensor | GPIO35 |
-| DS18B20 | GPIO25 |
-| Flow Sensor | GPIO18 (Interrupt) |
-| Relay Pump | GPIO4 |
-| LED Hijau | GPIO26 |
-| LED Merah | GPIO27 |
-| LCD SDA | GPIO21 |
-| LCD SCL | GPIO22 |
-
-## 📊 Penjelasan Sensor
-
-### pH Sensor
-- Menggunakan 3-point calibration (pH 4, 7, 9)
-- Moving average + EMA smoothing
-- Range: 0-14 pH
-
-### TDS Sensor
-- Menggunakan formula DFRobot
-- Kompensasi suhu otomatis
-- Range: 0-1000 ppm
-
-### Turbidity Sensor
-- Mengukur kekeruhan air
-- Output: Persentase kejernihan (0-100%)
-- Kalibrasi di air jernih dan udara
-
-### DS18B20 Temperature
-- Sensor suhu digital
-- Resolusi 12-bit
-- Range: -55°C to 125°C
-
-### Flow Sensor
-- Menggunakan interrupt untuk akurasi
-- Kalibrasi dengan volume aktual
-- Menghitung flow rate (L/menit)
-
-## 📦 Library yang Dibutuhkan
-
-### Arduino Libraries (Install via Library Manager)
-1. **LiquidCrystal_I2C** - untuk LCD I2C
-2. **OneWire** - untuk DS18B20
-3. **DallasTemperature** - untuk DS18B20
-4. **WiFiManager** - untuk manajemen WiFi
-5. **PubSubClient** - untuk MQTT
-
-### Web Dashboard Libraries (CDN)
-- Chart.js - Untuk grafik real-time
-- Paho MQTT - Untuk koneksi MQTT via WebSocket
-
-## 🚀 Cara Install
+## ⚙️ Installation
 
 ### 1. Clone Repository
 ```bash
 git clone https://github.com/username/smart-ro-monitor.git
+cd smart-ro-monitor
 ```
 
-### 2. Install Arduino Libraries
-Buka Arduino IDE → Sketch → Include Library → Manage Libraries
-Cari dan install library yang dibutuhkan.
+### 2. Deploy ke GitHub Pages
+1. Upload semua file ke repository GitHub
+2. Buka **Settings** → **Pages**
+3. Pilih **Source**: `Deploy from a branch` → `main` → `/ (root)`
+4. Simpan
+5. Tunggu beberapa menit, lalu akses di:
+   `https://username.github.io/smart-ro-monitor`
 
 ### 3. Upload ke ESP32
-1. Buka file `Project.ino` dengan Arduino IDE
-2. Pilih board: ESP32 Dev Module
-3. Pilih port yang sesuai
-4. Upload sketch
-
-### 4. Setting WiFi
-1. Setelah upload, ESP32 akan membuat hotspot "WaterMonitor"
-2. Connect ke hotspot dan buka browser ke `192.168.4.1`
-3. Pilih WiFi network dan masukkan password
-
-### 5. Running Dashboard
-1. Upload folder `dashboard` ke GitHub Pages
-2. Atau jalankan local server:
-```bash
-cd dashboard
-python -m http.server 8000
-```
-3. Buka browser ke `http://localhost:8000`
-
-## 📡 Format MQTT
-
-### Topic: `watermon/all`
-
-```json
-{
-  "ph": 7.20,
-  "tds": 18,
-  "turbidity": 85,
-  "temperature": 27.5,
-  "status": "LAYAK",
-  "health": 84,
-  "days_left": 24,
-  "volume": 18000.5,
-  "flow_rate": 2.5,
-  "pump": "ON"
-}
-```
-
-### Individual Topics
-- `watermon/ph` - pH value
-- `watermon/tds` - TDS value (ppm)
-- `watermon/temp` - Temperature (°C)
-- `watermon/turbidity` - Turbidity (%)
-- `watermon/volume` - Total volume (L)
-- `watermon/flow_rate` - Flow rate (L/min)
-- `watermon/status` - System status
-
-## 🖥️ Dashboard Screenshot
-
-*(Tambahkan screenshot dashboard di sini)*
-
-## 🔧 Troubleshooting
-
-### Sensor tidak terbaca
-- Periksa koneksi wiring
-- Pastikan pull-up resistor terpasang (kecuali sensor internal)
-- Coba kalibrasi ulang
-
-### WiFi tidak connect
-- Reset WiFi settings: `wifi` command di Serial Monitor
-- Pastikan mode WiFi 2.4GHz
-- Coba gunakan hotspot smartphone untuk testing
-
-### MQTT tidak terhubung
-- Periksa koneksi internet
-- Coba ganti broker MQTT
-- Pastikan tidak ada firewall blocking port 1883
-
-## 📝 Serial Commands
-
-| Command | Deskripsi |
-|---------|-----------|
-| `r` | Reset volume flow sensor |
-| `c1` | Mulai kalibrasi flow 1 liter |
-| `c2` | Mulai kalibrasi flow 2 liter |
-| `k` | Selesai kalibrasi flow |
-| `status` | Tampilkan semua status sensor |
-| `reset` | Reset filter health |
-| `wifi` | Reset WiFi dan masuk portal |
-
-## 🔮 Future Development
-
-- [ ] Mobile App (Flutter/React Native)
-- [ ] Historical data dengan InfluxDB
-- [ ] Email/SMS notification when water not LAYAK
-- [ ] Multiple filter stages monitoring
-- [ ] Automatic filter replacement reminder
-- [ ] Machine Learning for predictive maintenance
-- [ ] Integration with Google Assistant/Alexa
-
-## 📄 License
-
-MIT License - feel free to use for education and commercial projects.
-
-## 👨‍💻 Kontributor
-
-- Nama Anda - [email@domain.com](mailto:email@domain.com)
+1. Buka `esp32/smart_ro_monitor.ino` di Arduino IDE
+2. Install library:
+   - `WiFiManager`
+   - `PubSubClient`
+   - `LiquidCrystal_I2C`
+   - `DallasTemperature`
+   - `OneWire`
+3. Upload sketch ke ESP32
+4. Hubungkan ke WiFi melalui hotspot `WaterMonitor`
 
 ---
 
-**⭐ Jangan lupa star repository ini jika bermanfaat!**
+## 🚀 Usage
+
+1. **Nyalakan ESP32**
+2. **Buka Dashboard** di browser
+3. **Tunggu koneksi MQTT** (biasanya < 10 detik)
+4. Monitoring real-time akan muncul otomatis
+
+**Parameter yang dimonitor:**
+- pH, TDS, Kekeruhan (%), Suhu
+- Debit air (L/min)
+- Total volume produksi
+- Kesehatan filter & estimasi hari tersisa
+
+---
+
+## 🧪 Testing
+
+- Buka Console Browser (`F12`) untuk melihat status MQTT
+- Kirim perintah via Serial Monitor ESP32:
+  - `status` → tampilkan semua data
+  - `r` → reset volume
+  - `test` → test buzzer
+
+---
+
+## 📦 Dependencies
+
+### Frontend
+- [Paho MQTT JS](https://cdn.jsdelivr.net/npm/paho-mqtt)
+- [Chart.js](https://cdn.jsdelivr.net/npm/chart.js)
+
+### ESP32
+- WiFiManager
+- PubSubClient
+- LiquidCrystal_I2C
+- OneWire + DallasTemperature
+
+---
+
+## 🔧 Configuration
+
+**MQTT Topics:**
+- Publish: `watermon/all`
+
+**Broker:**
+- `broker.hivemq.com`
+- Port WebSocket: `8000` (WSS)
+
+---
+
+## 🐞 Troubleshooting
+
+**Dashboard tidak connect?**
+- Pastikan ESP32 sudah online dan publish data
+- Cek koneksi WiFi ESP32
+- Refresh halaman / bersihkan cache
+
+**Data tidak muncul?**
+- Buka Console Browser (`F12`)
+- Periksa apakah ada error MQTT
+
+**ESP32 tidak connect ke WiFi?**
+- Reset WiFiManager dengan tombol (jika sudah diatur)
+
+---
+
+## 📄 License
+
+Proyek ini open source di bawah lisensi **MIT**.
+
+---
+
+<div align="center">
+  <strong>💧 Smart RO Water Quality Monitoring System</strong><br>
+  Built with ESP32 • MQTT • GitHub Pages
+  <p><a href="#top">⬆ Kembali ke Atas</a></p>
+</div>
