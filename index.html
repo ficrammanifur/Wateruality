@@ -4,8 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Smart RO Water Quality Monitor</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💧</text></svg>">
     <link rel="stylesheet" href="style.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <!-- Paho MQTT -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -88,6 +92,15 @@
                 <div class="card-title">Pompa</div>
                 <div class="pump-status">
                     <span id="pumpStatus" class="pump-badge">--</span>
+                </div>
+            </div>
+            
+            <!-- Card: Flow Rate -->
+            <div class="card">
+                <div class="card-title">Debit Air</div>
+                <div class="value-display">
+                    <span id="flowRate" class="value-large">--</span>
+                    <span class="value-unit">L/min</span>
                 </div>
             </div>
         </div>
