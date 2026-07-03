@@ -1,6 +1,6 @@
 <h1 align="center">💧 SMART RO WATER QUALITY MONITOR</h1>
 <p align="center">
-  <img src="https://via.placeholder.com/800x400/2b6cb0/ffffff?text=Smart+RO+Water+Quality+Monitor" alt="Smart RO Monitor Preview" width="700"/>
+  <img src="Smart+RO+Water+Quality+Monitor" alt="Smart RO Monitor Preview" width="700"/>
 </p>
 <p align="center">
   <em>Sistem Monitoring Kualitas Air RO Real-time berbasis ESP32 + MQTT</em>
