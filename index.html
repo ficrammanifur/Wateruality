@@ -3,38 +3,49 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart RO Water Quality Monitor</title>
+    <title>Smart RO Water Quality Monitor - Real-Time</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💧</text></svg>">
     <link rel="stylesheet" href="style.css">
-    <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-    <!-- Paho MQTT -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
 </head>
 <body>
     <div class="container">
+        <!-- HEADER -->
         <header>
-            <h1>💧 Smart RO Water Quality Monitor</h1>
+            <h1>
+                <span class="emoji">💧</span> 
+                Smart RO Monitor
+                <span id="connectionStatus" class="badge badge-warning">● Connecting...</span>
+            </h1>
             <div class="status-header">
                 <span id="mqttStatus" class="status-badge offline">MQTT: Offline</span>
-                <span id="lastUpdate">Last Update: --</span>
+                <span id="espStatus" class="status-badge offline">ESP32: Offline</span>
+                <span id="lastUpdate">⏱️ --:--:--</span>
             </div>
         </header>
 
+        <!-- GRID CARDS -->
         <div class="grid">
-            <!-- Card: Status Air -->
-            <div class="card">
-                <div class="card-title">Status Air</div>
+            <!-- Status Air -->
+            <div class="card card-status">
+                <div class="card-title">
+                    <span>Status Air</span>
+                    <span class="icon">📊</span>
+                </div>
                 <div id="waterStatus" class="status-display">
-                    <span class="status-text">--</span>
+                    <span class="status-text pending">---</span>
                     <span class="status-icon">⏳</span>
                 </div>
-                <div class="status-detail" id="statusDetail">Menunggu data...</div>
+                <div class="status-detail" id="statusDetail">Menunggu data dari ESP32...</div>
             </div>
 
-            <!-- Card: Filter Health -->
-            <div class="card">
-                <div class="card-title">Kesehatan Filter</div>
+            <!-- Filter Health -->
+            <div class="card card-health">
+                <div class="card-title">
+                    <span>Kesehatan Filter</span>
+                    <span class="icon">🔧</span>
+                </div>
                 <div class="health-display">
                     <div class="health-percentage" id="filterHealth">--%</div>
                     <div class="progress-bar">
@@ -42,62 +53,83 @@
                     </div>
                 </div>
                 <div class="health-detail">
-                    <span id="daysLeft">Estimasi: -- Hari</span>
-                    <span id="volumeTotal">Volume: -- L</span>
+                    <span id="daysLeft">📅 -- Hari</span>
+                    <span id="volumeTotal">💧 -- L</span>
                 </div>
             </div>
 
-            <!-- Card: pH -->
-            <div class="card">
-                <div class="card-title">pH</div>
+            <!-- pH -->
+            <div class="card card-ph">
+                <div class="card-title">
+                    <span>pH</span>
+                    <span class="icon">🧪</span>
+                </div>
                 <div class="value-display">
                     <span id="phValue" class="value-large">--</span>
                     <span class="value-unit">pH</span>
                 </div>
-                <div class="status-indicator" id="phStatus">Normal</div>
+                <div class="status-indicator" id="phStatus">Menunggu...</div>
             </div>
 
-            <!-- Card: TDS -->
-            <div class="card">
-                <div class="card-title">TDS</div>
+            <!-- TDS -->
+            <div class="card card-tds">
+                <div class="card-title">
+                    <span>TDS</span>
+                    <span class="icon">💎</span>
+                </div>
                 <div class="value-display">
                     <span id="tdsValue" class="value-large">--</span>
                     <span class="value-unit">ppm</span>
                 </div>
-                <div class="status-indicator" id="tdsStatus">Normal</div>
+                <div class="status-indicator" id="tdsStatus">Menunggu...</div>
             </div>
 
-            <!-- Card: Turbidity -->
-            <div class="card">
-                <div class="card-title">Kekeruhan</div>
+            <!-- Turbidity -->
+            <div class="card card-turbidity">
+                <div class="card-title">
+                    <span>Kekeruhan</span>
+                    <span class="icon">🌊</span>
+                </div>
                 <div class="value-display">
                     <span id="turbidityValue" class="value-large">--</span>
                     <span class="value-unit">%</span>
                 </div>
-                <div class="status-indicator" id="turbidityStatus">Jernih</div>
+                <div class="status-indicator" id="turbidityStatus">Menunggu...</div>
             </div>
 
-            <!-- Card: Temperature -->
-            <div class="card">
-                <div class="card-title">Suhu</div>
+            <!-- Temperature -->
+            <div class="card card-temp">
+                <div class="card-title">
+                    <span>Suhu</span>
+                    <span class="icon">🌡️</span>
+                </div>
                 <div class="value-display">
                     <span id="tempValue" class="value-large">--</span>
                     <span class="value-unit">°C</span>
                 </div>
-                <div class="status-indicator" id="tempStatus">Normal</div>
+                <div class="status-indicator" id="tempStatus">Menunggu...</div>
             </div>
 
-            <!-- Card: Pump Status -->
-            <div class="card">
-                <div class="card-title">Pompa</div>
+            <!-- Pump Status -->
+            <div class="card card-pump">
+                <div class="card-title">
+                    <span>Pompa</span>
+                    <span class="icon">⚡</span>
+                </div>
                 <div class="pump-status">
-                    <span id="pumpStatus" class="pump-badge">--</span>
+                    <span id="pumpStatus" class="pump-badge off">
+                        <span class="dot"></span>
+                        OFF
+                    </span>
                 </div>
             </div>
-            
-            <!-- Card: Flow Rate -->
-            <div class="card">
-                <div class="card-title">Debit Air</div>
+
+            <!-- Flow Rate -->
+            <div class="card card-flow">
+                <div class="card-title">
+                    <span>Debit Air</span>
+                    <span class="icon">💨</span>
+                </div>
                 <div class="value-display">
                     <span id="flowRate" class="value-large">--</span>
                     <span class="value-unit">L/min</span>
@@ -105,17 +137,29 @@
             </div>
         </div>
 
-        <!-- Charts -->
+        <!-- CHARTS -->
         <div class="charts-container">
             <div class="chart-card">
-                <div class="card-title">Grafik pH</div>
-                <canvas id="phChart"></canvas>
+                <div class="card-title">📈 Grafik pH Real-Time</div>
+                <div class="chart-wrapper">
+                    <canvas id="phChart"></canvas>
+                </div>
             </div>
             <div class="chart-card">
-                <div class="card-title">Grafik TDS</div>
-                <canvas id="tdsChart"></canvas>
+                <div class="card-title">📈 Grafik TDS Real-Time</div>
+                <div class="chart-wrapper">
+                    <canvas id="tdsChart"></canvas>
+                </div>
             </div>
         </div>
+
+        <!-- FOOTER -->
+        <footer>
+            <p>
+                <span id="dataCount">📊 0 data points</span>
+                <span id="lastMessage">📨 Last message: --</span>
+            </p>
+        </footer>
     </div>
 
     <script src="script.js"></script>
