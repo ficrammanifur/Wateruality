@@ -9,7 +9,7 @@
 #include <Preferences.h>  // Untuk menyimpan kalibrasi
 
 // ==================== PIN DEFINITIONS ====================
-#define FLOW_PIN        18
+#define FLOW_PIN        19
 
 // ==================== FLOW KALIBRASI ====================
 float PULSES_PER_LITER   = 310.0;    // Jumlah pulsa per liter (sesuai sensor)
