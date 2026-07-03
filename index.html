@@ -7,7 +7,7 @@
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💧</text></svg>">
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mqtt@5.0.0/dist/mqtt.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -25,77 +25,12 @@
             </div>
         </header>
 
-        <!-- GRID CARDS -->
+        <!-- GRID CARDS (sama seperti sebelumnya) -->
         <div class="grid">
-            <div class="card card-status">
-                <div class="card-title"><span>Status Air</span><span class="icon">📊</span></div>
-                <div id="waterStatus" class="status-display">
-                    <span class="status-text pending">---</span>
-                    <span class="status-icon">⏳</span>
-                </div>
-                <div class="status-detail" id="statusDetail">Menunggu data dari ESP32...</div>
-            </div>
-            <!-- Filter Health -->
-            <div class="card card-health">
-                <div class="card-title"><span>Kesehatan Filter</span><span class="icon">🔧</span></div>
-                <div class="health-display">
-                    <div class="health-percentage" id="filterHealth">--%</div>
-                    <div class="progress-bar">
-                        <div id="healthBar" class="progress-fill" style="width: 0%"></div>
-                    </div>
-                </div>
-                <div class="health-detail">
-                    <span id="daysLeft">📅 -- Hari</span>
-                    <span id="volumeTotal">💧 -- L</span>
-                </div>
-            </div>
-            <!-- pH, TDS, Turbidity, Temp, Flow, Volume (sama seperti sebelumnya) -->
-            <div class="card card-ph">
-                <div class="card-title"><span>pH</span><span class="icon">🧪</span></div>
-                <div class="value-display">
-                    <span id="phValue" class="value-large">--</span>
-                    <span class="value-unit">pH</span>
-                </div>
-                <div class="status-indicator" id="phStatus">Menunggu...</div>
-            </div>
-            <div class="card card-tds">
-                <div class="card-title"><span>TDS</span><span class="icon">💎</span></div>
-                <div class="value-display">
-                    <span id="tdsValue" class="value-large">--</span>
-                    <span class="value-unit">ppm</span>
-                </div>
-                <div class="status-indicator" id="tdsStatus">Menunggu...</div>
-            </div>
-            <div class="card card-turbidity">
-                <div class="card-title"><span>Kekeruhan</span><span class="icon">🌊</span></div>
-                <div class="value-display">
-                    <span id="turbidityValue" class="value-large">--</span>
-                    <span class="value-unit">%</span>
-                </div>
-                <div class="status-indicator" id="turbidityStatus">Menunggu...</div>
-            </div>
-            <div class="card card-temp">
-                <div class="card-title"><span>Suhu</span><span class="icon">🌡️</span></div>
-                <div class="value-display">
-                    <span id="tempValue" class="value-large">--</span>
-                    <span class="value-unit">°C</span>
-                </div>
-                <div class="status-indicator" id="tempStatus">Menunggu...</div>
-            </div>
-            <div class="card card-flow">
-                <div class="card-title"><span>Debit Air</span><span class="icon">💨</span></div>
-                <div class="value-display">
-                    <span id="flowRate" class="value-large">--</span>
-                    <span class="value-unit">L/min</span>
-                </div>
-            </div>
-            <div class="card card-volume">
-                <div class="card-title"><span>Volume Produksi</span><span class="icon">📦</span></div>
-                <div class="value-display">
-                    <span id="volumeValue" class="value-large">--</span>
-                    <span class="value-unit">Liter</span>
-                </div>
-            </div>
+            <div class="card card-status"> ... </div>
+            <div class="card card-health"> ... </div>
+            <!-- Sisanya sama seperti index.html lama kamu -->
+            <!-- (Copy bagian grid cards dari kode lama kamu) -->
         </div>
 
         <!-- CHARTS -->
@@ -110,7 +45,6 @@
             </div>
         </div>
 
-        <!-- FOOTER -->
         <footer>
             <span id="dataCount">📊 0 data points</span>
             <span id="lastMessage">📨 Last message: --</span>
@@ -118,26 +52,15 @@
         </footer>
     </div>
 
-    <!-- ==================== INLINE SCRIPT ==================== -->
     <script>
-        // === CONFIG & STATE ===
-        const CONFIG = {
-            mqtt: {
-                broker: 'wss://broker.hivemq.com:8000/mqtt',
-                clientId: 'dashboard_' + Math.random().toString(16).substr(2, 10),
-                topics: ['watermon/all']
-            },
-            maxDataPoints: 60,
-            reconnectInterval: 5000
-        };
+        // ==================== MQTT CONFIG ====================
+        const MQTT_BROKER = "wss://broker.hivemq.com:8884/mqtt";
+        const MQTT_TOPIC = "watermon/all";
 
-        let state = {
-            connected: false,
-            mqttClient: null,
-            dataCount: 0,
-            charts: { ph: { labels: [], values: [] }, tds: { labels: [], values: [] } }
-        };
+        let client = null;
+        let messageCount = 0;
 
+        // DOM Elements
         const DOM = {
             connectionStatus: document.getElementById('connectionStatus'),
             mqttStatus: document.getElementById('mqttStatus'),
@@ -159,40 +82,77 @@
             volumeValue: document.getElementById('volumeValue')
         };
 
-        // Chart Init
-        function initCharts() {
-            const phChart = new Chart(document.getElementById('phChart'), {
-                type: 'line', data: { labels: [], datasets: [{ label: 'pH', data: [], borderColor: '#4299e1', tension: 0.4, fill: true }] },
-                options: { responsive: true, scales: { y: { min: 0, max: 14 } } }
-            });
-            const tdsChart = new Chart(document.getElementById('tdsChart'), {
-                type: 'line', data: { labels: [], datasets: [{ label: 'TDS', data: [], borderColor: '#48bb78', tension: 0.4, fill: true }] },
-                options: { responsive: true, scales: { y: { min: 0, max: 500 } } }
-            });
-            return { phChart, tdsChart };
-        }
-        const charts = initCharts();
+        let charts = null;
 
-        // MQTT Functions (sama seperti sebelumnya)
-        function initMQTT() {
-            state.mqttClient = new Paho.MQTT.Client(CONFIG.mqtt.broker, CONFIG.mqtt.clientId);
-            state.mqttClient.onConnectionLost = () => { console.log("Connection lost"); };
-            state.mqttClient.onMessageArrived = (message) => {
+        // ==================== INIT CHARTS ====================
+        function initCharts() {
+            charts = {
+                ph: new Chart(document.getElementById('phChart'), {
+                    type: 'line',
+                    data: { labels: [], datasets: [{ label: 'pH', data: [], borderColor: '#4299e1', tension: 0.4, fill: true }] },
+                    options: { responsive: true, scales: { y: { min: 0, max: 14 } } }
+                }),
+                tds: new Chart(document.getElementById('tdsChart'), {
+                    type: 'line',
+                    data: { labels: [], datasets: [{ label: 'TDS', data: [], borderColor: '#48bb78', tension: 0.4, fill: true }] },
+                    options: { responsive: true, scales: { y: { min: 0, max: 500 } } }
+                })
+            };
+        }
+
+        // ==================== MQTT CONNECTION ====================
+        function connectToMQTT() {
+            console.log("🔌 Connecting to HiveMQ...");
+
+            client = mqtt.connect(MQTT_BROKER, {
+                clientId: 'dashboard_' + Math.random().toString(16).substr(2, 8),
+                clean: true,
+                connectTimeout: 5000,
+                reconnectPeriod: 3000,
+                keepalive: 60
+            });
+
+            client.on("connect", () => {
+                console.log("✅ Connected to MQTT Broker!");
+                DOM.mqttStatus.textContent = "MQTT: Online";
+                DOM.mqttStatus.className = "status-badge online";
+                DOM.connectionStatus.textContent = "● Online";
+                DOM.connectionStatus.className = "badge badge-success";
+
+                client.subscribe(MQTT_TOPIC, (err) => {
+                    if (!err) console.log(`📡 Subscribed to ${MQTT_TOPIC}`);
+                });
+            });
+
+            client.on("message", (topic, message) => {
                 try {
-                    const data = JSON.parse(message.payloadString);
-                    console.log("Data:", data);
+                    const data = JSON.parse(message.toString());
+                    console.log("📨 Data received:", data);
+                    
+                    messageCount++;
+                    DOM.dataCount.textContent = `📊 ${messageCount} data points`;
+                    DOM.lastMessage.textContent = `📨 Last: ${new Date().toLocaleTimeString('id-ID')}`;
+
                     updateDashboard(data);
                     updateCharts(data);
-                } catch(e) {}
-            };
-            state.mqttClient.connect({
-                onSuccess: () => console.log("✅ MQTT Connected!"),
-                onFailure: () => console.log("❌ MQTT Failed")
+                } catch (e) {
+                    console.error("Parse error:", e);
+                }
+            });
+
+            client.on("error", (err) => {
+                console.error("❌ MQTT Error:", err);
+            });
+
+            client.on("reconnect", () => {
+                console.log("🔄 Reconnecting...");
             });
         }
 
+        // ==================== UPDATE DASHBOARD ====================
         function updateDashboard(data) {
             DOM.lastUpdate.textContent = `⏱️ ${new Date().toLocaleTimeString('id-ID')}`;
+
             if (data.ph) DOM.phValue.textContent = data.ph.toFixed(2);
             if (data.tds) DOM.tdsValue.textContent = data.tds.toFixed(0);
             if (data.turbidity) DOM.turbidityValue.textContent = data.turbidity.toFixed(0);
@@ -202,27 +162,40 @@
                 DOM.volumeValue.textContent = data.volume.toFixed(1);
                 DOM.volumeTotal.textContent = `💧 ${data.volume.toFixed(1)} L`;
             }
+
+            // Status Air
+            const statusText = DOM.waterStatus.querySelector('.status-text') || DOM.waterStatus;
+            if (data.status === 'LAYAK') {
+                statusText.textContent = 'LAYAK';
+                statusText.style.color = '#48bb78';
+            } else {
+                statusText.textContent = 'TIDAK LAYAK';
+                statusText.style.color = '#fc8181';
+            }
         }
 
         function updateCharts(data) {
             const now = new Date().toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'});
-            if (data.ph) {
-                state.charts.ph.labels.push(now);
-                state.charts.ph.values.push(data.ph);
-                if (state.charts.ph.labels.length > CONFIG.maxDataPoints) state.charts.ph.labels.shift(), state.charts.ph.values.shift();
-                charts.phChart.update('none');
+            if (data.ph && charts) {
+                charts.ph.data.labels.push(now);
+                charts.ph.data.datasets[0].data.push(data.ph);
+                if (charts.ph.data.labels.length > 60) charts.ph.data.labels.shift(), charts.ph.data.datasets[0].data.shift();
+                charts.ph.update('none');
             }
-            if (data.tds) {
-                state.charts.tds.labels.push(now);
-                state.charts.tds.values.push(data.tds);
-                if (state.charts.tds.labels.length > CONFIG.maxDataPoints) state.charts.tds.labels.shift(), state.charts.tds.values.shift();
-                charts.tdsChart.update('none');
+            if (data.tds && charts) {
+                charts.tds.data.labels.push(now);
+                charts.tds.data.datasets[0].data.push(data.tds);
+                if (charts.tds.data.labels.length > 60) charts.tds.data.labels.shift(), charts.tds.data.datasets[0].data.shift();
+                charts.tds.update('none');
             }
         }
 
-        // Start
-        console.log('🚀 Dashboard Started');
-        initMQTT();
+        // ==================== START ====================
+        document.addEventListener("DOMContentLoaded", () => {
+            console.log("🚀 Smart RO Dashboard Started");
+            initCharts();
+            connectToMQTT();
+        });
     </script>
 </body>
 </html>
