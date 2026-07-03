@@ -14,7 +14,7 @@
         <!-- HEADER -->
         <header>
             <h1>
-                <span class="emoji">💧</span> 
+                <span class="emoji">💧</span>
                 Smart RO Monitor
                 <span id="connectionStatus" class="badge badge-warning">● Connecting...</span>
             </h1>
@@ -27,25 +27,17 @@
 
         <!-- GRID CARDS -->
         <div class="grid">
-            <!-- Status Air -->
             <div class="card card-status">
-                <div class="card-title">
-                    <span>Status Air</span>
-                    <span class="icon">📊</span>
-                </div>
+                <div class="card-title"><span>Status Air</span><span class="icon">📊</span></div>
                 <div id="waterStatus" class="status-display">
                     <span class="status-text pending">---</span>
                     <span class="status-icon">⏳</span>
                 </div>
                 <div class="status-detail" id="statusDetail">Menunggu data dari ESP32...</div>
             </div>
-
             <!-- Filter Health -->
             <div class="card card-health">
-                <div class="card-title">
-                    <span>Kesehatan Filter</span>
-                    <span class="icon">🔧</span>
-                </div>
+                <div class="card-title"><span>Kesehatan Filter</span><span class="icon">🔧</span></div>
                 <div class="health-display">
                     <div class="health-percentage" id="filterHealth">--%</div>
                     <div class="progress-bar">
@@ -57,77 +49,48 @@
                     <span id="volumeTotal">💧 -- L</span>
                 </div>
             </div>
-
-            <!-- pH -->
+            <!-- pH, TDS, Turbidity, Temp, Flow, Volume (sama seperti sebelumnya) -->
             <div class="card card-ph">
-                <div class="card-title">
-                    <span>pH</span>
-                    <span class="icon">🧪</span>
-                </div>
+                <div class="card-title"><span>pH</span><span class="icon">🧪</span></div>
                 <div class="value-display">
                     <span id="phValue" class="value-large">--</span>
                     <span class="value-unit">pH</span>
                 </div>
                 <div class="status-indicator" id="phStatus">Menunggu...</div>
             </div>
-
-            <!-- TDS -->
             <div class="card card-tds">
-                <div class="card-title">
-                    <span>TDS</span>
-                    <span class="icon">💎</span>
-                </div>
+                <div class="card-title"><span>TDS</span><span class="icon">💎</span></div>
                 <div class="value-display">
                     <span id="tdsValue" class="value-large">--</span>
                     <span class="value-unit">ppm</span>
                 </div>
                 <div class="status-indicator" id="tdsStatus">Menunggu...</div>
             </div>
-
-            <!-- Turbidity -->
             <div class="card card-turbidity">
-                <div class="card-title">
-                    <span>Kekeruhan</span>
-                    <span class="icon">🌊</span>
-                </div>
+                <div class="card-title"><span>Kekeruhan</span><span class="icon">🌊</span></div>
                 <div class="value-display">
                     <span id="turbidityValue" class="value-large">--</span>
                     <span class="value-unit">%</span>
                 </div>
                 <div class="status-indicator" id="turbidityStatus">Menunggu...</div>
             </div>
-
-            <!-- Temperature -->
             <div class="card card-temp">
-                <div class="card-title">
-                    <span>Suhu</span>
-                    <span class="icon">🌡️</span>
-                </div>
+                <div class="card-title"><span>Suhu</span><span class="icon">🌡️</span></div>
                 <div class="value-display">
                     <span id="tempValue" class="value-large">--</span>
                     <span class="value-unit">°C</span>
                 </div>
                 <div class="status-indicator" id="tempStatus">Menunggu...</div>
             </div>
-
-            <!-- Flow Rate -->
             <div class="card card-flow">
-                <div class="card-title">
-                    <span>Debit Air</span>
-                    <span class="icon">💨</span>
-                </div>
+                <div class="card-title"><span>Debit Air</span><span class="icon">💨</span></div>
                 <div class="value-display">
                     <span id="flowRate" class="value-large">--</span>
                     <span class="value-unit">L/min</span>
                 </div>
             </div>
-
-            <!-- Volume Produksi -->
             <div class="card card-volume">
-                <div class="card-title">
-                    <span>Volume Produksi</span>
-                    <span class="icon">📦</span>
-                </div>
+                <div class="card-title"><span>Volume Produksi</span><span class="icon">📦</span></div>
                 <div class="value-display">
                     <span id="volumeValue" class="value-large">--</span>
                     <span class="value-unit">Liter</span>
@@ -139,15 +102,11 @@
         <div class="charts-container">
             <div class="chart-card">
                 <div class="card-title">📈 Grafik pH Real-Time</div>
-                <div class="chart-wrapper">
-                    <canvas id="phChart"></canvas>
-                </div>
+                <div class="chart-wrapper"><canvas id="phChart"></canvas></div>
             </div>
             <div class="chart-card">
                 <div class="card-title">📈 Grafik TDS Real-Time</div>
-                <div class="chart-wrapper">
-                    <canvas id="tdsChart"></canvas>
-                </div>
+                <div class="chart-wrapper"><canvas id="tdsChart"></canvas></div>
             </div>
         </div>
 
@@ -159,6 +118,111 @@
         </footer>
     </div>
 
-    <script src="script.js"></script>
+    <!-- ==================== INLINE SCRIPT ==================== -->
+    <script>
+        // === CONFIG & STATE ===
+        const CONFIG = {
+            mqtt: {
+                broker: 'wss://broker.hivemq.com:8000/mqtt',
+                clientId: 'dashboard_' + Math.random().toString(16).substr(2, 10),
+                topics: ['watermon/all']
+            },
+            maxDataPoints: 60,
+            reconnectInterval: 5000
+        };
+
+        let state = {
+            connected: false,
+            mqttClient: null,
+            dataCount: 0,
+            charts: { ph: { labels: [], values: [] }, tds: { labels: [], values: [] } }
+        };
+
+        const DOM = {
+            connectionStatus: document.getElementById('connectionStatus'),
+            mqttStatus: document.getElementById('mqttStatus'),
+            espStatus: document.getElementById('espStatus'),
+            lastUpdate: document.getElementById('lastUpdate'),
+            dataCount: document.getElementById('dataCount'),
+            lastMessage: document.getElementById('lastMessage'),
+            waterStatus: document.getElementById('waterStatus'),
+            statusDetail: document.getElementById('statusDetail'),
+            filterHealth: document.getElementById('filterHealth'),
+            healthBar: document.getElementById('healthBar'),
+            daysLeft: document.getElementById('daysLeft'),
+            volumeTotal: document.getElementById('volumeTotal'),
+            phValue: document.getElementById('phValue'),
+            tdsValue: document.getElementById('tdsValue'),
+            turbidityValue: document.getElementById('turbidityValue'),
+            tempValue: document.getElementById('tempValue'),
+            flowRate: document.getElementById('flowRate'),
+            volumeValue: document.getElementById('volumeValue')
+        };
+
+        // Chart Init
+        function initCharts() {
+            const phChart = new Chart(document.getElementById('phChart'), {
+                type: 'line', data: { labels: [], datasets: [{ label: 'pH', data: [], borderColor: '#4299e1', tension: 0.4, fill: true }] },
+                options: { responsive: true, scales: { y: { min: 0, max: 14 } } }
+            });
+            const tdsChart = new Chart(document.getElementById('tdsChart'), {
+                type: 'line', data: { labels: [], datasets: [{ label: 'TDS', data: [], borderColor: '#48bb78', tension: 0.4, fill: true }] },
+                options: { responsive: true, scales: { y: { min: 0, max: 500 } } }
+            });
+            return { phChart, tdsChart };
+        }
+        const charts = initCharts();
+
+        // MQTT Functions (sama seperti sebelumnya)
+        function initMQTT() {
+            state.mqttClient = new Paho.MQTT.Client(CONFIG.mqtt.broker, CONFIG.mqtt.clientId);
+            state.mqttClient.onConnectionLost = () => { console.log("Connection lost"); };
+            state.mqttClient.onMessageArrived = (message) => {
+                try {
+                    const data = JSON.parse(message.payloadString);
+                    console.log("Data:", data);
+                    updateDashboard(data);
+                    updateCharts(data);
+                } catch(e) {}
+            };
+            state.mqttClient.connect({
+                onSuccess: () => console.log("✅ MQTT Connected!"),
+                onFailure: () => console.log("❌ MQTT Failed")
+            });
+        }
+
+        function updateDashboard(data) {
+            DOM.lastUpdate.textContent = `⏱️ ${new Date().toLocaleTimeString('id-ID')}`;
+            if (data.ph) DOM.phValue.textContent = data.ph.toFixed(2);
+            if (data.tds) DOM.tdsValue.textContent = data.tds.toFixed(0);
+            if (data.turbidity) DOM.turbidityValue.textContent = data.turbidity.toFixed(0);
+            if (data.temperature) DOM.tempValue.textContent = data.temperature.toFixed(1);
+            if (data.flow_rate) DOM.flowRate.textContent = data.flow_rate.toFixed(1);
+            if (data.volume) {
+                DOM.volumeValue.textContent = data.volume.toFixed(1);
+                DOM.volumeTotal.textContent = `💧 ${data.volume.toFixed(1)} L`;
+            }
+        }
+
+        function updateCharts(data) {
+            const now = new Date().toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'});
+            if (data.ph) {
+                state.charts.ph.labels.push(now);
+                state.charts.ph.values.push(data.ph);
+                if (state.charts.ph.labels.length > CONFIG.maxDataPoints) state.charts.ph.labels.shift(), state.charts.ph.values.shift();
+                charts.phChart.update('none');
+            }
+            if (data.tds) {
+                state.charts.tds.labels.push(now);
+                state.charts.tds.values.push(data.tds);
+                if (state.charts.tds.labels.length > CONFIG.maxDataPoints) state.charts.tds.labels.shift(), state.charts.tds.values.shift();
+                charts.tdsChart.update('none');
+            }
+        }
+
+        // Start
+        console.log('🚀 Dashboard Started');
+        initMQTT();
+    </script>
 </body>
 </html>
