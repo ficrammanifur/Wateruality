@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart RO Water Quality Monitor</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💧</text></svg>">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mqtt@5.0.0/dist/mqtt.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- HEADER -->
+        <header>
+            <h1>
+                <span class="emoji">💧</span>
+                Smart RO Monitor
+                <span id="connectionStatus" class="badge badge-warning">● Connecting...</span>
+            </h1>
+            <div class="status-header">
+                <span id="mqttStatus" class="status-badge offline">MQTT: Offline</span>
+                <span id="espStatus" class="status-badge offline">ESP32: Offline</span>
+                <span id="lastUpdate">⏱️ --:--:--</span>
+            </div>
+        </header>
+
+        <!-- GRID CARDS -->
+        <div class="grid">
+            <div class="card card-status">
+                <div class="card-title"><span>Status Air</span><span class="icon">📊</span></div>
+                <div id="waterStatus" class="status-display">
+                    <span class="status-text pending">---</span>
+                    <span class="status-icon">⏳</span>
+                </div>
+                <div class="status-detail" id="statusDetail">Menunggu data dari ESP32...</div>
+            </div>
+
+            <div class="card card-health">
+                <div class="card-title"><span>Kesehatan Filter</span><span class="icon">🔧</span></div>
+                <div class="health-display">
+                    <div class="health-percentage" id="filterHealth">--%</div>
+                    <div class="progress-bar">
+                        <div id="healthBar" class="progress-fill" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="health-detail">
+                    <span id="daysLeft">📅 -- Hari</span>
+                    <span id="volumeTotal">💧 -- L</span>
+                </div>
+            </div>
+
+            <div class="card card-ph">
+                <div class="card-title"><span>pH</span><span class="icon">🧪</span></div>
+                <div class="value-display">
+                    <span id="phValue" class="value-large">--</span>
+                    <span class="value-unit">pH</span>
+                </div>
+                <div class="status-indicator" id="phStatus">Menunggu...</div>
+            </div>
+
+            <div class="card card-tds">
+                <div class="card-title"><span>TDS</span><span class="icon">💎</span></div>
+                <div class="value-display">
+                    <span id="tdsValue" class="value-large">--</span>
+                    <span class="value-unit">ppm</span>
+                </div>
+                <div class="status-indicator" id="tdsStatus">Menunggu...</div>
+            </div>
+
+            <div class="card card-turbidity">
+                <div class="card-title"><span>Kekeruhan</span><span class="icon">🌊</span></div>
+                <div class="value-display">
+                    <span id="turbidityValue" class="value-large">--</span>
+                    <span class="value-unit">%</span>
+                </div>
+                <div class="status-indicator" id="turbidityStatus">Menunggu...</div>
+            </div>
+
+            <div class="card card-temp">
+                <div class="card-title"><span>Suhu</span><span class="icon">🌡️</span></div>
+                <div class="value-display">
+                    <span id="tempValue" class="value-large">--</span>
+                    <span class="value-unit">°C</span>
+                </div>
+                <div class="status-indicator" id="tempStatus">Menunggu...</div>
+            </div>
+
+            <div class="card card-flow">
+                <div class="card-title"><span>Debit Air</span><span class="icon">💨</span></div>
+                <div class="value-display">
+                    <span id="flowRate" class="value-large">--</span>
+                    <span class="value-unit">L/min</span>
+                </div>
+            </div>
+
+            <div class="card card-volume">
+                <div class="card-title"><span>Volume Produksi</span><span class="icon">📦</span></div>
+                <div class="value-display">
+                    <span id="volumeValue" class="value-large">--</span>
+                    <span class="value-unit">Liter</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- CHARTS -->
+        <div class="charts-container">
+            <div class="chart-card">
+                <div class="card-title">📈 Grafik pH Real-Time</div>
+                <div class="chart-wrapper"><canvas id="phChart"></canvas></div>
+            </div>
+            <div class="chart-card">
+                <div class="card-title">📈 Grafik TDS Real-Time</div>
+                <div class="chart-wrapper"><canvas id="tdsChart"></canvas></div>
+            </div>
+        </div>
+
+        <footer>
+            <span id="dataCount">📊 0 data points</span>
+            <span id="lastMessage">📨 Last message: --</span>
+            <span id="filterStatus">🔧 Filter: --</span>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
